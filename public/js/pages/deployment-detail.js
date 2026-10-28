@@ -1,6 +1,7 @@
 /**
  * Pipra Live Deployment Detail Page
- * Features real-time SSE stage transitions and terminal log streaming.
+ * Features real-time SSE stage transitions, terminal log streaming,
+ * health verification probe telemetry, and verified rollback recovery.
  */
 
 import { api } from '../api.js';
@@ -19,7 +20,11 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
     activeStream = null;
   }
 
-  container.innerHTML = `<div style="padding: 24px; color: var(--color-text-secondary);">Loading execution telemetry for ${deploymentId}...</div>`;
+  container.innerHTML = `
+    <div style="padding: var(--space-8); text-align: center; color: var(--color-text-secondary);">
+      <div style="font-family: var(--font-family-mono); font-size: var(--font-size-sm);">Loading telemetry for ${deploymentId}...</div>
+    </div>
+  `;
 
   try {
     const deployment = await api.getDeployment(deploymentId);
@@ -32,21 +37,24 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
     function renderView() {
       const isTerminal = ['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'ROLLBACK_FAILED'].includes(deployment.status);
       const isRunning = !isTerminal;
+      const isFailed = deployment.status === 'FAILED' || deployment.status === 'ROLLBACK_FAILED';
 
-      const durationStr = deployment.duration_ms ? `${(deployment.duration_ms / 1000).toFixed(1)}s` : (isRunning ? 'in progress...' : '--');
+      const durationStr = deployment.duration_ms 
+        ? `${(deployment.duration_ms / 1000).toFixed(1)}s` 
+        : (isRunning ? 'in progress...' : '--');
 
       container.innerHTML = `
-        <div class="page-header" style="margin-bottom: var(--space-6);">
+        <div class="page-header" style="margin-bottom: var(--space-5);">
           <div class="page-title-group">
-            <div style="display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-2);">
-              <a href="#/history" class="btn btn-ghost btn-sm" title="Back to History">
+            <div style="display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-1); flex-wrap: wrap;">
+              <a href="#/history" class="btn btn-ghost btn-sm" title="Back to Deployments">
                 ${renderIcon('rotate-ccw', 12)}
                 <span>Back</span>
               </a>
               <span class="env-tag ${deployment.is_production ? 'env-tag-prod' : 'env-tag-nonprod'}">
                 ${(deployment.env_name || '').toUpperCase()}
               </span>
-              <span style="font-family: var(--font-family-mono); font-size: 14px; font-weight: 600;">${deployment.id}</span>
+              <span style="font-family: var(--font-family-mono); font-size: 14px; font-weight: 600; color: var(--color-text-primary);">${deployment.id}</span>
               ${renderStatusBadge(deployment.status)}
             </div>
             <p class="page-subtitle" style="margin-top: 0;">
@@ -54,79 +62,88 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
             </p>
           </div>
 
-          <div style="display: flex; align-items: center; gap: var(--space-3);">
+          <div style="display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;">
             ${isRunning ? `
-              <button id="btn-cancel-deploy" class="btn btn-danger btn-sm">
+              <button id="btn-cancel-deploy" class="btn btn-danger btn-sm" aria-label="Cancel active deployment">
                 ${renderIcon('x', 14)}
-                <span>Cancel Deployment</span>
+                <span>Cancel Execution</span>
               </button>
             ` : `
-              <a href="#/deploy?app=${deployment.application_id}&env=${deployment.environment_id}" class="btn btn-primary btn-sm">
+              <a href="#/deploy?app=${deployment.application_id}&env=${deployment.environment_id}&branch=${deployment.branch}" class="btn btn-primary btn-sm" aria-label="Re-deploy this revision">
                 ${renderIcon('play', 14)}
                 <span>Re-deploy</span>
               </a>
             `}
-            <a href="/api/deployments/${deployment.id}/logs/export" target="_blank" class="btn btn-secondary btn-sm" title="Export logs as file">
+            <a href="/api/deployments/${deployment.id}/logs/export" target="_blank" class="btn btn-secondary btn-sm" title="Export complete raw log file">
               ${renderIcon('download', 14)}
               <span>Export Log</span>
             </a>
           </div>
         </div>
 
-        <!-- 10-Stage Pipeline Timeline -->
+        <!-- 10-Stage Pipeline Lifecycle Track -->
         <div id="timeline-container">
           ${renderPipelineTimeline(deployment.stages, selectedStageFilter, deployment.current_stage)}
         </div>
 
-        <!-- Failure or Rollback Alert -->
+        <!-- Failure or Rollback Diagnostic Alert -->
         ${deployment.error_message ? `
-          <div style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-6); background-color: var(--color-status-error-bg); border: 1px solid var(--color-status-error); border-radius: var(--radius-sm); font-size: 13px; color: #fca5a5; display: flex; align-items: center; justify-content: space-between;">
-            <div style="display: flex; align-items: center; gap: var(--space-3);">
-              ${renderIcon('alert-triangle', 18)}
+          <div style="margin-bottom: var(--space-5); padding: var(--space-3) var(--space-4); background-color: var(--color-status-danger-bg); border: 1px solid var(--color-status-danger-border); border-radius: var(--radius-sm); font-size: 13px; color: var(--color-text-primary); display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3);">
+            <div style="display: flex; align-items: flex-start; gap: var(--space-3);">
+              <span style="color: var(--color-status-danger); margin-top: 2px;">${renderIcon('alert-triangle', 18)}</span>
               <div>
-                <strong>Execution Alert:</strong> ${deployment.error_message}
-                ${deployment.rollback_status === 'SUCCESSFUL' ? '<br><span style="color: #6ee7b7; font-weight: 600;">✓ Automated rollback verified. Live traffic preserved on backup release.</span>' : ''}
+                <strong style="color: var(--color-status-danger);">Execution Failure Diagnostic:</strong>
+                <div style="margin-top: 2px;">${deployment.error_message}</div>
+                ${deployment.rollback_status === 'SUCCESSFUL' 
+                  ? '<div style="color: var(--color-status-success); font-weight: 600; margin-top: 4px;">Verified: Automated rollback completed successfully. Production serving remains on last known-good release.</div>' 
+                  : (deployment.rollback_status === 'FAILED'
+                    ? '<div style="color: var(--color-status-danger); font-weight: 700; margin-top: 4px;">CRITICAL: Automated rollback failed. Manual infrastructure intervention required.</div>'
+                    : '')}
               </div>
             </div>
           </div>
         ` : ''}
 
-        <!-- Split View: Execution Metadata & Log Viewer -->
-        <div style="display: grid; grid-template-columns: 360px 1fr; gap: var(--space-6); align-items: start;">
-          <!-- Left: Execution Details & Health Probes -->
-          <div style="display: flex; flex-direction: column; gap: var(--space-6);">
+        <!-- Split View: Execution Metadata & Log Console -->
+        <div style="display: grid; grid-template-columns: minmax(300px, 340px) 1fr; gap: var(--space-5); align-items: start;" class="deployment-split-grid">
+          <!-- Left: Provenance & Health Probes -->
+          <div style="display: flex; flex-direction: column; gap: var(--space-5);">
             <!-- Provenance Card -->
             <div class="card" style="margin-bottom: 0;">
               <div class="card-header">
                 <span class="card-title">
                   ${renderIcon('git-branch', 14)}
-                  <span>Source Provenance</span>
+                  <span>Release Provenance</span>
                 </span>
               </div>
               <div class="card-body" style="font-size: 12px; display: flex; flex-direction: column; gap: var(--space-3);">
                 <div>
-                  <span style="color: var(--color-text-secondary);">Branch & Tag:</span>
-                  <div style="font-family: var(--font-family-mono); font-weight: 600; color: var(--color-surface-raised);">
+                  <span style="color: var(--color-text-secondary); text-transform: uppercase; font-size: 10px; font-weight: 600;">Branch & Tag:</span>
+                  <div style="font-family: var(--font-family-mono); font-weight: 600; color: var(--color-action-primary); margin-top: 2px;">
                     ${deployment.branch} @ ${deployment.image_tag}
                   </div>
                 </div>
                 <div>
-                  <span style="color: var(--color-text-secondary);">Commit SHA:</span>
-                  <div style="font-family: var(--font-family-mono); color: var(--color-text-primary);">
+                  <span style="color: var(--color-text-secondary); text-transform: uppercase; font-size: 10px; font-weight: 600;">Commit SHA:</span>
+                  <div style="font-family: var(--font-family-mono); color: var(--color-text-primary); margin-top: 2px;">
                     ${deployment.commit_sha ? deployment.commit_sha.substring(0, 12) : 'Resolving...'}
                   </div>
                 </div>
                 <div>
-                  <span style="color: var(--color-text-secondary);">Commit Message:</span>
-                  <div style="color: var(--color-text-primary); font-style: italic;">
+                  <span style="color: var(--color-text-secondary); text-transform: uppercase; font-size: 10px; font-weight: 600;">Commit Message:</span>
+                  <div style="color: var(--color-text-primary); margin-top: 2px; font-style: italic;">
                     ${deployment.commit_message || 'N/A'}
                   </div>
                 </div>
                 <div>
-                  <span style="color: var(--color-text-secondary);">Author:</span>
-                  <div style="color: var(--color-text-primary);">
+                  <span style="color: var(--color-text-secondary); text-transform: uppercase; font-size: 10px; font-weight: 600;">Author:</span>
+                  <div style="color: var(--color-text-primary); margin-top: 2px;">
                     ${deployment.author || 'N/A'}
                   </div>
+                </div>
+                <div style="border-top: 1px solid var(--color-border-subtle); padding-top: var(--space-2); display: flex; justify-content: space-between;">
+                  <span style="color: var(--color-text-secondary);">Total Elapsed:</span>
+                  <span style="font-family: var(--font-family-mono); font-weight: 600;">${durationStr}</span>
                 </div>
               </div>
             </div>
@@ -136,37 +153,39 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
               <div class="card-header">
                 <span class="card-title">
                   ${renderIcon('activity', 14)}
-                  <span>Health Probe Telemetry</span>
+                  <span>Health Probes</span>
                 </span>
-                <span style="font-size: 11px; color: var(--color-text-secondary);">${deployment.probes?.length || 0} attempts</span>
+                <span style="font-size: 11px; color: var(--color-text-secondary); font-family: var(--font-family-mono);">${deployment.probes?.length || 0} checks</span>
               </div>
               <div class="card-body" style="padding: 0; max-height: 240px; overflow-y: auto;">
                 ${(!deployment.probes || deployment.probes.length === 0) ? `
-                  <div style="padding: 16px; font-size: 12px; color: var(--color-text-tertiary); text-align: center;">
+                  <div style="padding: var(--space-4); font-size: 12px; color: var(--color-text-muted); text-align: center;">
                     Waiting for Stage 6 / Stage 8 probes...
                   </div>
                 ` : `
                   <table>
                     <thead>
                       <tr>
-                        <th>Attempt</th>
+                        <th>#</th>
                         <th>Target</th>
                         <th>HTTP</th>
                         <th>Latency</th>
-                        <th>Status</th>
+                        <th>Result</th>
                       </tr>
                     </thead>
                     <tbody>
                       ${deployment.probes.map(p => `
                         <tr style="font-size: 11px; font-family: var(--font-family-mono);">
-                          <td>#${p.attempt}/${p.max_attempts}</td>
+                          <td>#${p.attempt}</td>
                           <td style="max-width: 90px; overflow: hidden; text-overflow: ellipsis;" title="${p.url}">${p.url}</td>
-                          <td style="color: ${p.passed ? 'var(--color-status-success)' : 'var(--color-status-error)'}; font-weight: 600;">
+                          <td style="color: ${p.passed ? 'var(--color-status-success)' : 'var(--color-status-danger)'}; font-weight: 600;">
                             ${p.http_status}
                           </td>
                           <td>${p.response_time_ms}ms</td>
                           <td>
-                            ${p.passed ? '<span style="color: var(--color-status-success);">PASS</span>' : '<span style="color: var(--color-status-error);">FAIL</span>'}
+                            ${p.passed 
+                              ? '<span style="color: var(--color-status-success); font-weight: 600;">PASS</span>' 
+                              : '<span style="color: var(--color-status-danger); font-weight: 600;">FAIL</span>'}
                           </td>
                         </tr>
                       `).join('')}
@@ -177,7 +196,7 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
             </div>
           </div>
 
-          <!-- Right: Terminal Log Viewer -->
+          <!-- Right: Terminal Log Console -->
           <div id="log-viewer-mount">
             ${renderLogViewer(currentLogs, selectedStageFilter, autoScrollEnabled, searchFilterText)}
           </div>
@@ -249,19 +268,19 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
         });
       }
 
-      // Cancel deployment
+      // Cancel deployment confirmation modal
       const cancelBtn = document.getElementById('btn-cancel-deploy');
       if (cancelBtn) {
         cancelBtn.addEventListener('click', () => {
           openModal({
-            title: 'Cancel Deployment',
+            title: 'Cancel Active Deployment',
             bodyHtml: `
-              <p>Are you sure you want to abort deployment <strong>${deployment.id}</strong>?</p>
-              <p style="color: var(--color-status-warning); font-size: 12px; margin-top: 8px;">
-                Cancellation stops active processes and safely removes temporary staging containers without disrupting live traffic.
-              </p>
+              <p style="color: var(--color-text-primary);">Are you sure you want to abort deployment <strong>${deployment.id}</strong>?</p>
+              <div style="margin-top: 12px; padding: 10px 12px; background-color: var(--color-status-warning-bg); border: 1px solid var(--color-status-warning-border); border-radius: var(--radius-sm); font-size: 12px; color: var(--color-text-primary);">
+                Cancellation terminates active build processes and safely isolates staging containers. Live production traffic will not be affected.
+              </div>
             `,
-            confirmText: 'Abort Pipeline',
+            confirmText: 'Abort Execution',
             confirmClass: 'btn-danger',
             onConfirm: async () => {
               await api.cancelDeployment(deployment.id);
@@ -287,7 +306,7 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
       deployment.current_stage = data.stageNumber;
       deployment.current_stage_name = data.stageName;
 
-      // Update timeline
+      // Update timeline directly
       const timelineBox = document.getElementById('timeline-container');
       if (timelineBox) {
         timelineBox.innerHTML = renderPipelineTimeline(deployment.stages, selectedStageFilter, deployment.current_stage);
@@ -308,6 +327,7 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
     activeStream.on('probe', (probeData) => {
       if (!deployment.probes) deployment.probes = [];
       deployment.probes.push(probeData);
+      renderView();
     });
 
     activeStream.on('status', (data) => {
@@ -325,6 +345,13 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
     activeStream.connect();
 
   } catch (err) {
-    container.innerHTML = `<div style="color: var(--color-status-error);">Error: ${err.message}</div>`;
+    container.innerHTML = `
+      <div class="card" style="border-left: 3px solid var(--color-status-danger);">
+        <div class="card-body">
+          <h3 style="color: var(--color-status-danger); margin-bottom: var(--space-2);">Error loading deployment</h3>
+          <p style="color: var(--color-text-secondary);">${err.message}</p>
+        </div>
+      </div>
+    `;
   }
 }

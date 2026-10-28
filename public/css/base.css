@@ -1,5 +1,6 @@
 /**
  * Pipra Base CSS & Typography System
+ * Aligned with DESIGN.md & WCAG 2.2 Level AA Standards
  */
 
 *, *::before, *::after {
@@ -21,23 +22,36 @@ html, body {
   text-rendering: optimizeLegibility;
 }
 
+/* Accessible Links */
 a {
-  color: var(--color-surface-raised);
+  color: var(--color-action-primary);
   text-decoration: none;
-  transition: opacity var(--motion-duration-fast) ease;
+  transition: color var(--motion-duration-fast) var(--motion-ease);
 }
 
 a:hover {
+  color: var(--color-action-primary-hover);
   text-decoration: underline;
 }
 
-/* Accessibility: High contrast keyboard focus indicator */
-:focus-visible {
-  outline: 2px solid var(--color-border-focus);
-  outline-offset: 2px;
+a:active {
+  color: var(--color-action-primary-pressed);
 }
 
-/* Headings */
+/* WCAG 2.2 AA Focus Visibility */
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring) !important;
+  outline-offset: 2px !important;
+}
+
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Headings — Restrained, compact, no oversized titles */
 h1, h2, h3, h4, h5, h6 {
   color: var(--color-text-primary);
   font-weight: var(--font-weight-semibold);
@@ -45,25 +59,31 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 h1 {
-  font-size: var(--font-size-md);
-  line-height: var(--font-line-height-heading);
+  font-size: var(--font-size-2xl);
+  line-height: var(--font-line-height-2xl);
 }
 
 h2 {
-  font-size: var(--font-size-title);
-  line-height: 24px;
+  font-size: var(--font-size-xl);
+  line-height: var(--font-line-height-xl);
 }
 
 h3 {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
+  font-size: var(--font-size-lg);
+  line-height: var(--font-line-height-lg);
 }
 
-/* Tables */
+h4 {
+  font-size: var(--font-size-md);
+  line-height: var(--font-line-height-md);
+}
+
+/* High-Density Data Tables */
 table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
+  font-variant-numeric: tabular-nums;
 }
 
 th {
@@ -72,36 +92,56 @@ th {
   color: var(--color-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  padding: var(--space-4) var(--space-6);
-  border-bottom: 1px solid var(--color-border-muted);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-default);
+  background-color: var(--color-surface-strong);
+  white-space: nowrap;
 }
 
 td {
-  padding: var(--space-5) var(--space-6);
-  border-bottom: 1px solid var(--color-border-default);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-border-subtle);
   vertical-align: middle;
 }
 
-/* Scrollbars */
+tr:hover td {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* Monospace & Tabular Numbers */
+code, pre, .font-mono {
+  font-family: var(--font-family-mono);
+  font-feature-settings: 'tnum';
+}
+
+code {
+  background-color: var(--color-surface-strong);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 2px 6px;
+  font-size: var(--font-size-xs);
+}
+
+/* Restrained Dark Scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-surface-muted);
+  background: var(--color-surface-base);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border-muted);
+  background: var(--color-border-default);
   border-radius: var(--radius-xs);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-secondary);
+  background: var(--color-border-strong);
 }
 
-/* Screen reader only utility */
+/* Screen Reader Accessible Utility */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -112,4 +152,14 @@ td {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border-width: 0;
+}
+
+/* Respect User Reduced Motion Preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

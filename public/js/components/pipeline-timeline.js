@@ -1,10 +1,10 @@
 /**
  * Pipra Pipeline Timeline Component
- * Interactive visual representation of the 10 deployment lifecycle stages.
+ * High-density visual track of the 10 deterministic deployment lifecycle stages.
+ * Fully keyboard accessible (Enter / Space to select / filter logs).
  */
 
 import { renderIcon } from '../icons.js';
-import { renderStatusBadge } from './health-badge.js';
 
 export function renderPipelineTimeline(stages = [], selectedStageNumber = null, currentActiveStage = 1) {
   const stageRows = stages.map(stage => {
@@ -13,14 +13,24 @@ export function renderPipelineTimeline(stages = [], selectedStageNumber = null, 
     const isSkipped = stage.status === 'SKIPPED';
     const isFailed = stage.status === 'FAILED';
     const isSucceeded = stage.status === 'SUCCEEDED';
+    const isRolledBack = stage.status === 'ROLLED_BACK' || stage.status === 'ROLLING_BACK';
 
     let iconHtml = renderIcon('clock', 12);
-    if (isRunning) iconHtml = `<span class="badge-dot" style="background-color: var(--color-surface-raised); animation: pulse-ring 1s infinite;"></span>`;
-    if (isSucceeded) iconHtml = `<span style="color: var(--color-status-success);">${renderIcon('check', 12)}</span>`;
-    if (isFailed) iconHtml = `<span style="color: var(--color-status-error);">${renderIcon('x', 12)}</span>`;
-    if (isSkipped) iconHtml = `<span style="color: var(--color-text-tertiary);">-</span>`;
+    if (isRunning) {
+      iconHtml = `<span class="badge-dot" style="background-color: var(--color-action-indigo); animation: badge-pulse 1s infinite ease-in-out;"></span>`;
+    } else if (isSucceeded) {
+      iconHtml = `<span style="color: var(--color-status-success);">${renderIcon('check', 12)}</span>`;
+    } else if (isFailed) {
+      iconHtml = `<span style="color: var(--color-status-danger);">${renderIcon('x', 12)}</span>`;
+    } else if (isRolledBack) {
+      iconHtml = `<span style="color: var(--color-status-warning);">${renderIcon('rotate-ccw', 12)}</span>`;
+    } else if (isSkipped) {
+      iconHtml = `<span style="color: var(--color-text-muted); font-size: 11px;">—</span>`;
+    }
 
-    const timingStr = stage.duration_ms ? `${(stage.duration_ms / 1000).toFixed(1)}s` : (isRunning ? 'in progress...' : (isSkipped ? 'skipped' : 'pending'));
+    const timingStr = stage.duration_ms 
+      ? `${(stage.duration_ms / 1000).toFixed(1)}s` 
+      : (isRunning ? 'running...' : (isSkipped ? 'skipped' : 'pending'));
 
     return `
       <div class="stage-step ${isSelected ? 'active' : ''}" 
@@ -28,9 +38,9 @@ export function renderPipelineTimeline(stages = [], selectedStageNumber = null, 
            role="button" 
            tabindex="0"
            aria-pressed="${isSelected}"
-           aria-label="Stage ${stage.stage_number}: ${stage.stage_name}, status: ${stage.status}">
+           aria-label="Stage 0${stage.stage_number}: ${stage.stage_name}. Status: ${stage.status}. Duration: ${timingStr}">
         <div class="stage-step-header">
-          <span class="stage-number">0${stage.stage_number}</span>
+          <span class="stage-number">${stage.stage_number < 10 ? '0' : ''}${stage.stage_number}</span>
           ${iconHtml}
         </div>
         <div class="stage-name" title="${stage.stage_name}">${stage.stage_name}</div>
@@ -44,13 +54,13 @@ export function renderPipelineTimeline(stages = [], selectedStageNumber = null, 
       <div class="card-header">
         <span class="card-title">
           ${renderIcon('layers', 16)}
-          <span>Pipeline Execution Lifecycle</span>
+          <span>Pipeline Execution Track</span>
         </span>
         <span style="font-size: var(--font-size-xs); color: var(--color-text-secondary);">
-          Click stage to filter logs
+          ${selectedStageNumber ? `Filtering Stage 0${selectedStageNumber} (click again to reset)` : 'Click stage to filter terminal stream'}
         </span>
       </div>
-      <div class="card-body" style="padding: var(--space-5);">
+      <div class="card-body" style="padding: var(--space-3) var(--space-4);">
         <div class="pipeline-timeline-horizontal">
           ${stageRows}
         </div>

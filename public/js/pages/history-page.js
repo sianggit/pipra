@@ -1,5 +1,7 @@
 /**
  * Pipra Deployment History & Release Catalog Page
+ * Searchable, filterable ledger of historical pipelines, commit provenance,
+ * and recovery outcomes.
  */
 
 import { api } from '../api.js';
@@ -7,18 +9,24 @@ import { renderIcon } from '../icons.js';
 import { renderStatusBadge } from '../components/health-badge.js';
 
 export async function renderHistoryPage(container) {
-  container.innerHTML = `<div style="padding: 24px; color: var(--color-text-secondary);">Loading release history...</div>`;
+  container.innerHTML = `
+    <div style="padding: var(--space-8); text-align: center; color: var(--color-text-secondary);">
+      <div style="font-family: var(--font-family-mono); font-size: var(--font-size-sm);">Loading deployment history...</div>
+    </div>
+  `;
 
   try {
-    const deployments = await api.getDeployments({ limit: 100 });
-    const apps = await api.getApplications();
-    const envs = await api.getEnvironments();
+    const [deployments, apps, envs] = await Promise.all([
+      api.getDeployments({ limit: 100 }),
+      api.getApplications().catch(() => []),
+      api.getEnvironments().catch(() => []),
+    ]);
 
     let statusFilter = '';
     let envFilter = '';
     let searchFilter = '';
 
-    function renderTable() {
+    function renderView() {
       const filtered = deployments.filter(d => {
         if (statusFilter && d.status !== statusFilter) return false;
         if (envFilter && d.environment_id !== envFilter && d.env_name !== envFilter) return false;
@@ -28,7 +36,8 @@ export async function renderHistoryPage(container) {
           const matchBranch = (d.branch || '').toLowerCase().includes(s);
           const matchTag = (d.image_tag || '').toLowerCase().includes(s);
           const matchCommit = (d.commit_sha || '').toLowerCase().includes(s);
-          if (!matchId && !matchBranch && !matchTag && !matchCommit) return false;
+          const matchApp = (d.app_display_name || d.app_name || '').toLowerCase().includes(s);
+          if (!matchId && !matchBranch && !matchTag && !matchCommit && !matchApp) return false;
         }
         return true;
       });
@@ -37,13 +46,13 @@ export async function renderHistoryPage(container) {
         <div class="page-header">
           <div class="page-title-group">
             <h1>
-              ${renderIcon('clock', 24)}
-              <span>Deployment History & Releases</span>
+              ${renderIcon('clock', 22)}
+              <span>Deployments & Releases</span>
             </h1>
-            <p class="page-subtitle">Searchable audit trail of all historical releases, commit provenance, and recovery outcomes.</p>
+            <p class="page-subtitle">Searchable audit trail of historical pipelines, commit provenance, and recovery outcomes.</p>
           </div>
           <div>
-            <a href="#/deploy" class="btn btn-primary">
+            <a href="#/deploy" class="btn btn-primary" aria-label="Start new deployment">
               ${renderIcon('play', 14)}
               <span>New Deployment</span>
             </a>
@@ -51,32 +60,36 @@ export async function renderHistoryPage(container) {
         </div>
 
         <!-- Filter Controls -->
-        <div class="card" style="margin-bottom: var(--space-6);">
-          <div class="card-body" style="padding: var(--space-4) var(--space-6);">
-            <div style="display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;">
-              <div style="flex: 1; min-width: 220px; position: relative;">
-                <input type="text" id="history-search" class="form-control" placeholder="Search by ID, branch, image tag, commit SHA..." value="${searchFilter}" />
+        <div class="card" style="margin-bottom: var(--space-5);">
+          <div class="card-body" style="padding: var(--space-3) var(--space-4);">
+            <div style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
+              <div style="flex: 1; min-width: 220px;">
+                <label for="history-search" class="sr-only">Search deployments</label>
+                <input type="text" id="history-search" class="form-control" placeholder="Search by ID, app, branch, tag, commit..." value="${searchFilter}" />
               </div>
 
-              <div style="width: 160px;">
+              <div style="width: 170px;">
+                <label for="history-env-filter" class="sr-only">Filter by environment</label>
                 <select id="history-env-filter" class="form-control">
                   <option value="">All Environments</option>
                   ${envs.map(e => `<option value="${e.id}" ${envFilter === e.id ? 'selected' : ''}>${e.display_name}</option>`).join('')}
                 </select>
               </div>
 
-              <div style="width: 160px;">
+              <div style="width: 170px;">
+                <label for="history-status-filter" class="sr-only">Filter by status</label>
                 <select id="history-status-filter" class="form-control">
                   <option value="">All Statuses</option>
                   <option value="SUCCEEDED" ${statusFilter === 'SUCCEEDED' ? 'selected' : ''}>SUCCEEDED</option>
                   <option value="FAILED" ${statusFilter === 'FAILED' ? 'selected' : ''}>FAILED</option>
                   <option value="CANCELLED" ${statusFilter === 'CANCELLED' ? 'selected' : ''}>CANCELLED</option>
                   <option value="ROLLBACK_FAILED" ${statusFilter === 'ROLLBACK_FAILED' ? 'selected' : ''}>ROLLBACK FAILED</option>
+                  <option value="RUNNING" ${statusFilter === 'RUNNING' ? 'selected' : ''}>RUNNING</option>
                 </select>
               </div>
 
-              <span style="font-size: var(--font-size-xs); color: var(--color-text-secondary);">
-                ${filtered.length} records found
+              <span style="font-size: var(--font-size-xs); color: var(--color-text-secondary); font-family: var(--font-family-mono); white-space: nowrap;">
+                ${filtered.length} of ${deployments.length} runs
               </span>
             </div>
           </div>
@@ -86,8 +99,8 @@ export async function renderHistoryPage(container) {
         <div class="card">
           <div class="card-body" style="padding: 0;">
             ${filtered.length === 0 ? `
-              <div style="padding: 40px; text-align: center; color: var(--color-text-tertiary);">
-                No matching deployment executions found.
+              <div style="padding: var(--space-8); text-align: center; color: var(--color-text-muted);">
+                No matching deployment records found for this filter.
               </div>
             ` : `
               <table>
@@ -100,7 +113,7 @@ export async function renderHistoryPage(container) {
                     <th>Initiated By</th>
                     <th>Status</th>
                     <th>Duration</th>
-                    <th>Created</th>
+                    <th>Timestamp</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -111,7 +124,7 @@ export async function renderHistoryPage(container) {
                     return `
                       <tr>
                         <td style="font-family: var(--font-family-mono); font-size: 12px;">
-                          <a href="#/deployments/${d.id}" style="color: var(--color-text-primary); font-weight: 600;">${d.id}</a>
+                          <a href="#/deployments/${d.id}" style="font-weight: 600;">${d.id}</a>
                         </td>
                         <td><strong>${d.app_display_name || d.app_name}</strong></td>
                         <td>
@@ -120,8 +133,8 @@ export async function renderHistoryPage(container) {
                           </span>
                         </td>
                         <td style="font-family: var(--font-family-mono); font-size: 11px;">
-                          <div>${d.branch} @ <span style="color: var(--color-surface-raised); font-weight: 600;">${d.image_tag}</span></div>
-                          ${d.commit_sha ? `<div style="color: var(--color-text-tertiary);">${d.commit_sha.substring(0, 8)}</div>` : ''}
+                          <div>${d.branch} @ <span style="color: var(--color-action-primary); font-weight: 600;">${d.image_tag}</span></div>
+                          ${d.commit_sha ? `<div style="color: var(--color-text-muted);">${d.commit_sha.substring(0, 8)}</div>` : ''}
                         </td>
                         <td style="font-size: 12px;">${d.initiated_by}</td>
                         <td>${renderStatusBadge(d.status)}</td>
@@ -129,11 +142,11 @@ export async function renderHistoryPage(container) {
                         <td style="font-size: 12px; color: var(--color-text-secondary);">${dateStr}</td>
                         <td>
                           <div style="display: flex; align-items: center; gap: var(--space-2);">
-                            <a href="#/deployments/${d.id}" class="btn btn-secondary btn-sm" title="View live timeline & logs">
+                            <a href="#/deployments/${d.id}" class="btn btn-secondary btn-sm" aria-label="View live execution for ${d.id}">
                               ${renderIcon('external-link', 12)}
                               <span>View</span>
                             </a>
-                            <a href="#/deploy?app=${d.application_id}&env=${d.environment_id}&branch=${d.branch}" class="btn btn-ghost btn-sm" title="Re-deploy this revision">
+                            <a href="#/deploy?app=${d.application_id}&env=${d.environment_id}&branch=${d.branch}" class="btn btn-ghost btn-sm" aria-label="Re-deploy revision ${d.image_tag}" title="Re-deploy this revision">
                               ${renderIcon('rotate-ccw', 12)}
                             </a>
                           </div>
@@ -159,27 +172,34 @@ export async function renderHistoryPage(container) {
       if (searchInput) {
         searchInput.addEventListener('input', (e) => {
           searchFilter = e.target.value;
-          renderTable();
+          renderView();
         });
       }
 
       if (envSelect) {
         envSelect.addEventListener('change', (e) => {
           envFilter = e.target.value;
-          renderTable();
+          renderView();
         });
       }
 
       if (statusSelect) {
         statusSelect.addEventListener('change', (e) => {
           statusFilter = e.target.value;
-          renderTable();
+          renderView();
         });
       }
     }
 
-    renderTable();
+    renderView();
   } catch (err) {
-    container.innerHTML = `<div style="color: var(--color-status-error);">Error: ${err.message}</div>`;
+    container.innerHTML = `
+      <div class="card" style="border-left: 3px solid var(--color-status-danger);">
+        <div class="card-body">
+          <h3 style="color: var(--color-status-danger); margin-bottom: var(--space-2);">Error loading deployment history</h3>
+          <p style="color: var(--color-text-secondary);">${err.message}</p>
+        </div>
+      </div>
+    `;
   }
 }

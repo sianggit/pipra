@@ -1,5 +1,6 @@
 /**
- * Pipra Accessible Modal Dialog Manager (WCAG 2.2 AA)
+ * Pipra Accessible Modal Dialog Manager (WCAG 2.2 Level AA)
+ * Features strict keyboard focus trapping, Escape dismiss, and focus restoration.
  */
 
 import { renderIcon } from '../icons.js';
@@ -22,8 +23,8 @@ export function openModal({ title, bodyHtml, confirmText = 'Confirm', confirmCla
   modalOverlay.innerHTML = `
     <div class="modal-dialog">
       <div class="modal-header">
-        <h3 id="modal-title" style="margin: 0; font-size: var(--font-size-title); font-weight: 600;">${title}</h3>
-        <button id="modal-close-btn" class="btn btn-ghost btn-sm" aria-label="Close dialog">
+        <h3 id="modal-title" style="margin: 0; font-size: var(--font-size-lg); font-weight: 600;">${title}</h3>
+        <button id="modal-close-btn" class="btn btn-ghost btn-sm" aria-label="Close dialog" title="Close">
           ${renderIcon('x', 14)}
         </button>
       </div>
@@ -58,29 +59,65 @@ export function openModal({ title, bodyHtml, confirmText = 'Confirm', confirmCla
       } catch (err) {
         confirmBtn.disabled = false;
         confirmBtn.innerText = confirmText;
-        alert(`Error: ${err.message}`);
+        const bodyElem = modalOverlay.querySelector('.modal-body');
+        if (bodyElem) {
+          const errBox = document.createElement('div');
+          errBox.style.cssText = 'margin-top: 12px; padding: 8px 12px; background-color: var(--color-status-danger-bg); border: 1px solid var(--color-status-danger); border-radius: var(--radius-sm); color: var(--color-status-danger); font-size: 12px;';
+          errBox.textContent = `Action failed: ${err.message}`;
+          bodyElem.prepend(errBox);
+        }
       }
     });
   }
 
-  // Backdrop dismiss
+  // Backdrop click dismiss
   modalOverlay.addEventListener('click', (e) => {
     if (e.target === modalOverlay) closeModal();
   });
 
-  // Escape key handler
+  // WCAG 2.2 AA Tab Focus Trap & Escape Handler
+  const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
   const keyHandler = (e) => {
-    if (e.key === 'Escape') closeModal();
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeModal();
+      return;
+    }
+
+    if (e.key === 'Tab') {
+      const focusables = Array.from(modalOverlay.querySelectorAll(focusableSelector)).filter(el => !el.disabled);
+      if (focusables.length === 0) return;
+
+      const firstEl = focusables[0];
+      const lastEl = focusables[focusables.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstEl) {
+          e.preventDefault();
+          lastEl.focus();
+        }
+      } else {
+        if (document.activeElement === lastEl) {
+          e.preventDefault();
+          firstEl.focus();
+        }
+      }
+    }
   };
+
   document.addEventListener('keydown', keyHandler);
   modalOverlay._keyHandler = keyHandler;
 
-  // Focus the first action button
-  if (confirmBtn) {
-    confirmBtn.focus();
-  } else if (cancelBtn) {
-    cancelBtn.focus();
-  }
+  // Set initial focus
+  setTimeout(() => {
+    if (confirmBtn) {
+      confirmBtn.focus();
+    } else if (cancelBtn) {
+      cancelBtn.focus();
+    } else {
+      closeBtn.focus();
+    }
+  }, 50);
 }
 
 export function closeModal() {
@@ -90,7 +127,7 @@ export function closeModal() {
     }
     activeModal.remove();
     activeModal = null;
-    if (lastFocusedElement) {
+    if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
       lastFocusedElement.focus();
       lastFocusedElement = null;
     }
