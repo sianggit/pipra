@@ -1,0 +1,97 @@
+/**
+ * Pipra Client-Side Hash Router
+ */
+
+import { renderNavShell, bindNavShellEvents } from './components/nav-shell.js';
+import { renderOverviewPage } from './pages/overview-page.js';
+import { renderAppsPage } from './pages/apps-page.js';
+import { renderEnvsPage } from './pages/envs-page.js';
+import { renderWizardPage } from './pages/wizard-page.js';
+import { renderDeploymentDetailPage } from './pages/deployment-detail.js';
+import { renderHistoryPage } from './pages/history-page.js';
+import { renderInfraPage } from './pages/infra-page.js';
+import { renderAdminPage, renderLoginPage } from './pages/admin-page.js';
+import { state } from './state.js';
+import { api } from './api.js';
+
+export class Router {
+  constructor(appContainer) {
+    this.appContainer = appContainer;
+  }
+
+  init() {
+    window.addEventListener('hashchange', () => this.handleRoute());
+    this.handleRoute();
+  }
+
+  async handleRoute() {
+    const hash = window.location.hash.slice(1) || '/overview';
+    const [pathPart, queryPart] = hash.split('?');
+    const query = Object.fromEntries(new URLSearchParams(queryPart || '').entries());
+
+    // Check authentication
+    const { user } = state.get();
+    if (!user && pathPart !== '/login') {
+      try {
+        const authData = await api.me();
+        state.set({ user: authData.user });
+      } catch {
+        window.location.hash = '#/login';
+        return;
+      }
+    }
+
+    if (pathPart === '/login') {
+      this.appContainer.innerHTML = `<main id="main-content"></main>`;
+      renderLoginPage(document.getElementById('main-content'));
+      return;
+    }
+
+    // Determine active route name for nav highlights
+    let activeRouteName = 'overview';
+    if (pathPart.startsWith('/applications')) activeRouteName = 'applications';
+    else if (pathPart.startsWith('/environments')) activeRouteName = 'environments';
+    else if (pathPart.startsWith('/deployments')) activeRouteName = 'history';
+    else if (pathPart.startsWith('/deploy')) activeRouteName = 'deploy';
+    else if (pathPart.startsWith('/history')) activeRouteName = 'history';
+    else if (pathPart.startsWith('/infrastructure')) activeRouteName = 'infrastructure';
+    else if (pathPart.startsWith('/admin')) activeRouteName = 'admin';
+
+    // Render Navigation Shell + Main mount
+    this.appContainer.innerHTML = `
+      ${renderNavShell(activeRouteName)}
+      <main id="main-content" class="pipra-main" role="main"></main>
+    `;
+    bindNavShellEvents();
+
+    const mainContent = document.getElementById('main-content');
+
+    // Route dispatch
+    if (pathPart === '/' || pathPart === '/overview') {
+      renderOverviewPage(mainContent);
+    } else if (pathPart === '/applications') {
+      renderAppsPage(mainContent);
+    } else if (pathPart === '/environments') {
+      renderEnvsPage(mainContent);
+    } else if (pathPart === '/deploy') {
+      renderWizardPage(mainContent, query);
+    } else if (pathPart.startsWith('/deployments/')) {
+      const deploymentId = pathPart.replace('/deployments/', '');
+      renderDeploymentDetailPage(mainContent, deploymentId);
+    } else if (pathPart === '/history') {
+      renderHistoryPage(mainContent);
+    } else if (pathPart === '/infrastructure') {
+      renderInfraPage(mainContent);
+    } else if (pathPart === '/admin') {
+      renderAdminPage(mainContent);
+    } else {
+      mainContent.innerHTML = `
+        <div class="card" style="text-align: center; padding: 48px;">
+          <h2>Page Not Found</h2>
+          <p style="color: var(--color-text-secondary); margin: 12px 0 24px;">The requested operational route '${pathPart}' does not exist.</p>
+          <a href="#/overview" class="btn btn-primary">Return to Overview</a>
+        </div>
+      `;
+    }
+  }
+}

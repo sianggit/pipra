@@ -1,0 +1,96 @@
+/**
+ * Pipra Design Tokens
+ * Updated to match: Pipra Tech Brand Identity Board
+ * Visual Style: Deep Midnight Slate, Electric Cyan-to-Violet Gradients, Platinum Typography
+ */
+
+:root {
+  /* Typography Tokens */
+  --font-family-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, system-ui, sans-serif;
+  --font-family-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, 'Courier New', monospace;
+
+  --font-size-xs: 12px;
+  --font-size-base: 13px;
+  --font-size-sm: 13px;
+  --font-size-title: 16px;
+  --font-size-md: 24px;
+
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --font-line-height-base: 19.5px;
+  --font-line-height-tight: 16px;
+  --font-line-height-heading: 30px;
+
+  /* Color Palette - Pipra Tech Brand Board */
+  --color-text-primary: #f8fafc;   /* Platinum white */
+  --color-text-secondary: #94a3b8; /* Muted steel slate */
+  --color-text-tertiary: #64748b;  /* Deep slate */
+  --color-text-inverse: #090d16;
+
+  /* Surfaces - Deep Midnight Slate */
+  --color-surface-base: #080c14;   /* Midnight deep background */
+  --color-surface-muted: #0f172a;  /* Slate 900 card / sidebar surface */
+  --color-surface-strong: #172136; /* Elevated slate card surface */
+  --color-surface-hover: #1e293b;
+
+  /* Brand Accents - Electric Blue, Cyan & Violet */
+  --color-surface-raised: #3b82f6; /* Royal / Electric Blue */
+  --color-accent-cyan: #38bdf8;
+  --color-accent-indigo: #4f46e5;
+  --color-accent-violet: #818cf8;
+  --color-accent-purple: #a855f7;
+
+  /* Gradient Tokens */
+  --gradient-brand-primary: linear-gradient(135deg, #38bdf8 0%, #3b82f6 50%, #4f46e5 100%);
+  --gradient-brand-violet: linear-gradient(135deg, #3b82f6 0%, #6366f1 50%, #a855f7 100%);
+  --gradient-card-glow: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.12) 0%, transparent 70%);
+
+  /* Border Tokens */
+  --color-border-default: #1e293b; /* Subtle slate border */
+  --color-border-muted: #2a3854;
+  --color-border-subtle: rgba(248, 250, 252, 0.08);
+  --color-border-focus: #3b82f6;
+
+  /* Status Colors */
+  --color-status-success: #10b981;
+  --color-status-success-bg: rgba(16, 185, 129, 0.12);
+  --color-status-warning: #f59e0b;
+  --color-status-warning-bg: rgba(245, 158, 11, 0.12);
+  --color-status-error: #ef4444;
+  --color-status-error-bg: rgba(239, 68, 68, 0.12);
+  --color-status-info: #38bdf8;
+  --color-status-info-bg: rgba(56, 189, 248, 0.12);
+  --color-status-neutral: #64748b;
+  --color-status-neutral-bg: rgba(100, 116, 139, 0.12);
+
+  /* Spacing Tokens */
+  --space-1: 1px;
+  --space-2: 2px;
+  --space-3: 8px;
+  --space-4: 9px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 14px;
+  --space-8: 24px;
+
+  /* Radius Tokens */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-full: 9999px;
+
+  /* Shadow Tokens */
+  --shadow-1: 0px 12px 32px -8px rgba(0, 0, 0, 0.75);
+  --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.25);
+  --shadow-button: 0 4px 14px rgba(59, 130, 246, 0.35);
+
+  /* Motion Tokens */
+  --motion-duration-instant: 120ms;
+  --motion-duration-fast: 150ms;
+  --motion-duration-normal: 180ms;
+  --motion-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}

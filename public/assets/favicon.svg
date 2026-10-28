@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48" fill="none">
+  <defs>
+    <!-- Midnight Squircle Background Gradient -->
+    <linearGradient id="pipra-sq-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#182235" />
+      <stop offset="100%" stop-color="#090d16" />
+    </linearGradient>
+
+    <!-- Top Wing Gradient -->
+    <linearGradient id="fav-top-wing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="50%" stop-color="#2563eb" />
+      <stop offset="100%" stop-color="#1e40af" />
+    </linearGradient>
+
+    <!-- Bottom Wing Gradient -->
+    <linearGradient id="fav-bottom-wing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="50%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#c084fc" />
+    </linearGradient>
+
+    <!-- Head / Chest Gradient -->
+    <linearGradient id="fav-head-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="70%" stop-color="#e2e8f0" />
+      <stop offset="100%" stop-color="#94a3b8" />
+    </linearGradient>
+
+    <filter id="fav-glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#3b82f6" flood-opacity="0.4" />
+    </filter>
+  </defs>
+
+  <!-- Squircle Base with Subtle Border -->
+  <rect x="1" y="1" width="46" height="46" rx="12" fill="url(#pipra-sq-bg)" stroke="#1e293b" stroke-width="1.5" />
+
+  <!-- Pipra Bird Centered -->
+  <g class="pipra-mark" filter="url(#fav-glow)" transform="translate(1.5, 2.5) scale(0.72)">
+    <!-- Bottom Wing -->
+    <path d="M 33 34 C 28 42, 23 51, 16 57 C 18 58, 22 57, 28 50 C 33 44, 38 38, 43 32 Z" 
+          fill="url(#fav-bottom-wing)" />
+
+    <!-- Top Wing -->
+    <path d="M 3 13 C 12 14, 25 21, 35 29 C 41 33, 44 33, 44 32 C 37 28, 29 23, 20 18 C 14 15, 8 13, 3 13 Z" 
+          fill="url(#fav-top-wing)" />
+
+    <!-- Top Wing Core -->
+    <path d="M 3 13 C 13 14, 24 20, 34 28 C 25 23, 16 18, 4 14 Z" 
+          fill="#ffffff" opacity="0.6" />
+
+    <!-- Head & Chest -->
+    <path d="M 35 29 C 39 23, 44 19, 50 18 C 55 17, 57 20, 60 21 C 61 21, 59 22, 57 23 C 53 26, 48 31, 43 34 C 39 36, 33 34, 35 29 Z" 
+          fill="url(#fav-head-grad)" />
+
+    <!-- Eye -->
+    <circle cx="51.5" cy="20.5" r="1.4" fill="#090d16" />
+  </g>
+</svg>

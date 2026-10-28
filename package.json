@@ -1,0 +1,27 @@
+{
+  "name": "pipra",
+  "version": "1.0.0",
+  "description": "Pipeline & Release Engineering Platform",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test test/**/*.test.js",
+    "test:unit": "node --test test/unit/*.test.js",
+    "test:integration": "node --test test/integration/*.test.js"
+  },
+  "keywords": [
+    "deployment",
+    "pipeline",
+    "release-engineering",
+    "devops",
+    "docker",
+    "blue-green"
+  ],
+  "author": "ASYST Platform Engineering",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

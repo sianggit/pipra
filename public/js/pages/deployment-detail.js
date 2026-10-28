@@ -1,0 +1,330 @@
+/**
+ * Pipra Live Deployment Detail Page
+ * Features real-time SSE stage transitions and terminal log streaming.
+ */
+
+import { api } from '../api.js';
+import { renderIcon } from '../icons.js';
+import { renderStatusBadge } from '../components/health-badge.js';
+import { renderPipelineTimeline, bindTimelineEvents } from '../components/pipeline-timeline.js';
+import { renderLogViewer, updateLogLines } from '../components/log-viewer.js';
+import { DeploymentEventStream } from '../sse.js';
+import { openModal } from '../components/modal.js';
+
+let activeStream = null;
+
+export async function renderDeploymentDetailPage(container, deploymentId) {
+  if (activeStream) {
+    activeStream.disconnect();
+    activeStream = null;
+  }
+
+  container.innerHTML = `<div style="padding: 24px; color: var(--color-text-secondary);">Loading execution telemetry for ${deploymentId}...</div>`;
+
+  try {
+    const deployment = await api.getDeployment(deploymentId);
+    let currentLogs = await api.getDeploymentLogs(deploymentId);
+
+    let selectedStageFilter = null;
+    let autoScrollEnabled = true;
+    let searchFilterText = '';
+
+    function renderView() {
+      const isTerminal = ['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'ROLLBACK_FAILED'].includes(deployment.status);
+      const isRunning = !isTerminal;
+
+      const durationStr = deployment.duration_ms ? `${(deployment.duration_ms / 1000).toFixed(1)}s` : (isRunning ? 'in progress...' : '--');
+
+      container.innerHTML = `
+        <div class="page-header" style="margin-bottom: var(--space-6);">
+          <div class="page-title-group">
+            <div style="display: flex; align-items: center; gap: var(--space-4); margin-bottom: var(--space-2);">
+              <a href="#/history" class="btn btn-ghost btn-sm" title="Back to History">
+                ${renderIcon('rotate-ccw', 12)}
+                <span>Back</span>
+              </a>
+              <span class="env-tag ${deployment.is_production ? 'env-tag-prod' : 'env-tag-nonprod'}">
+                ${(deployment.env_name || '').toUpperCase()}
+              </span>
+              <span style="font-family: var(--font-family-mono); font-size: 14px; font-weight: 600;">${deployment.id}</span>
+              ${renderStatusBadge(deployment.status)}
+            </div>
+            <p class="page-subtitle" style="margin-top: 0;">
+              Target: <strong>${deployment.app_display_name}</strong> | Initiated by: <strong>${deployment.initiated_by}</strong> | Started: ${new Date(deployment.created_at).toLocaleTimeString()}
+            </p>
+          </div>
+
+          <div style="display: flex; align-items: center; gap: var(--space-3);">
+            ${isRunning ? `
+              <button id="btn-cancel-deploy" class="btn btn-danger btn-sm">
+                ${renderIcon('x', 14)}
+                <span>Cancel Deployment</span>
+              </button>
+            ` : `
+              <a href="#/deploy?app=${deployment.application_id}&env=${deployment.environment_id}" class="btn btn-primary btn-sm">
+                ${renderIcon('play', 14)}
+                <span>Re-deploy</span>
+              </a>
+            `}
+            <a href="/api/deployments/${deployment.id}/logs/export" target="_blank" class="btn btn-secondary btn-sm" title="Export logs as file">
+              ${renderIcon('download', 14)}
+              <span>Export Log</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- 10-Stage Pipeline Timeline -->
+        <div id="timeline-container">
+          ${renderPipelineTimeline(deployment.stages, selectedStageFilter, deployment.current_stage)}
+        </div>
+
+        <!-- Failure or Rollback Alert -->
+        ${deployment.error_message ? `
+          <div style="margin-bottom: var(--space-6); padding: var(--space-4) var(--space-6); background-color: var(--color-status-error-bg); border: 1px solid var(--color-status-error); border-radius: var(--radius-sm); font-size: 13px; color: #fca5a5; display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: var(--space-3);">
+              ${renderIcon('alert-triangle', 18)}
+              <div>
+                <strong>Execution Alert:</strong> ${deployment.error_message}
+                ${deployment.rollback_status === 'SUCCESSFUL' ? '<br><span style="color: #6ee7b7; font-weight: 600;">✓ Automated rollback verified. Live traffic preserved on backup release.</span>' : ''}
+              </div>
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Split View: Execution Metadata & Log Viewer -->
+        <div style="display: grid; grid-template-columns: 360px 1fr; gap: var(--space-6); align-items: start;">
+          <!-- Left: Execution Details & Health Probes -->
+          <div style="display: flex; flex-direction: column; gap: var(--space-6);">
+            <!-- Provenance Card -->
+            <div class="card" style="margin-bottom: 0;">
+              <div class="card-header">
+                <span class="card-title">
+                  ${renderIcon('git-branch', 14)}
+                  <span>Source Provenance</span>
+                </span>
+              </div>
+              <div class="card-body" style="font-size: 12px; display: flex; flex-direction: column; gap: var(--space-3);">
+                <div>
+                  <span style="color: var(--color-text-secondary);">Branch & Tag:</span>
+                  <div style="font-family: var(--font-family-mono); font-weight: 600; color: var(--color-surface-raised);">
+                    ${deployment.branch} @ ${deployment.image_tag}
+                  </div>
+                </div>
+                <div>
+                  <span style="color: var(--color-text-secondary);">Commit SHA:</span>
+                  <div style="font-family: var(--font-family-mono); color: var(--color-text-primary);">
+                    ${deployment.commit_sha ? deployment.commit_sha.substring(0, 12) : 'Resolving...'}
+                  </div>
+                </div>
+                <div>
+                  <span style="color: var(--color-text-secondary);">Commit Message:</span>
+                  <div style="color: var(--color-text-primary); font-style: italic;">
+                    ${deployment.commit_message || 'N/A'}
+                  </div>
+                </div>
+                <div>
+                  <span style="color: var(--color-text-secondary);">Author:</span>
+                  <div style="color: var(--color-text-primary);">
+                    ${deployment.author || 'N/A'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Health Probes Card -->
+            <div class="card" style="margin-bottom: 0;">
+              <div class="card-header">
+                <span class="card-title">
+                  ${renderIcon('activity', 14)}
+                  <span>Health Probe Telemetry</span>
+                </span>
+                <span style="font-size: 11px; color: var(--color-text-secondary);">${deployment.probes?.length || 0} attempts</span>
+              </div>
+              <div class="card-body" style="padding: 0; max-height: 240px; overflow-y: auto;">
+                ${(!deployment.probes || deployment.probes.length === 0) ? `
+                  <div style="padding: 16px; font-size: 12px; color: var(--color-text-tertiary); text-align: center;">
+                    Waiting for Stage 6 / Stage 8 probes...
+                  </div>
+                ` : `
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Attempt</th>
+                        <th>Target</th>
+                        <th>HTTP</th>
+                        <th>Latency</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${deployment.probes.map(p => `
+                        <tr style="font-size: 11px; font-family: var(--font-family-mono);">
+                          <td>#${p.attempt}/${p.max_attempts}</td>
+                          <td style="max-width: 90px; overflow: hidden; text-overflow: ellipsis;" title="${p.url}">${p.url}</td>
+                          <td style="color: ${p.passed ? 'var(--color-status-success)' : 'var(--color-status-error)'}; font-weight: 600;">
+                            ${p.http_status}
+                          </td>
+                          <td>${p.response_time_ms}ms</td>
+                          <td>
+                            ${p.passed ? '<span style="color: var(--color-status-success);">PASS</span>' : '<span style="color: var(--color-status-error);">FAIL</span>'}
+                          </td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                `}
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Terminal Log Viewer -->
+          <div id="log-viewer-mount">
+            ${renderLogViewer(currentLogs, selectedStageFilter, autoScrollEnabled, searchFilterText)}
+          </div>
+        </div>
+      `;
+
+      // Update log lines and bind UI controls
+      const streamContent = document.getElementById('log-stream-content');
+      updateLogLines(streamContent, currentLogs, selectedStageFilter, searchFilterText, autoScrollEnabled);
+
+      bindPageEvents();
+    }
+
+    function bindPageEvents() {
+      // Timeline selection
+      const timelineBox = document.getElementById('timeline-container');
+      bindTimelineEvents(timelineBox, (stageNumber) => {
+        selectedStageFilter = (selectedStageFilter === stageNumber) ? null : stageNumber;
+        renderView();
+      });
+
+      // Stage select dropdown
+      const stageSelect = document.getElementById('log-stage-select');
+      if (stageSelect) {
+        stageSelect.addEventListener('change', (e) => {
+          selectedStageFilter = e.target.value ? parseInt(e.target.value, 10) : null;
+          const streamContent = document.getElementById('log-stream-content');
+          updateLogLines(streamContent, currentLogs, selectedStageFilter, searchFilterText, autoScrollEnabled);
+        });
+      }
+
+      // Search text filter
+      const searchInput = document.getElementById('log-search-input');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          searchFilterText = e.target.value;
+          const streamContent = document.getElementById('log-stream-content');
+          updateLogLines(streamContent, currentLogs, selectedStageFilter, searchFilterText, autoScrollEnabled);
+        });
+      }
+
+      // Auto-scroll checkbox
+      const autoScrollBox = document.getElementById('log-autoscroll');
+      if (autoScrollBox) {
+        autoScrollBox.addEventListener('change', (e) => {
+          autoScrollEnabled = e.target.checked;
+        });
+      }
+
+      // Copy logs
+      const copyBtn = document.getElementById('btn-copy-logs');
+      if (copyBtn) {
+        copyBtn.addEventListener('click', () => {
+          const text = currentLogs
+            .filter(l => !selectedStageFilter || l.stage_number === selectedStageFilter)
+            .map(l => `[${l.timestamp}] [Stage ${l.stage_number}] [${l.level.toUpperCase()}] ${l.message}`)
+            .join('\n');
+          navigator.clipboard.writeText(text);
+          copyBtn.innerHTML = `<span>Copied!</span>`;
+          setTimeout(() => { copyBtn.innerHTML = `${renderIcon('copy', 12)} <span>Copy</span>`; }, 2000);
+        });
+      }
+
+      // Download logs
+      const downloadBtn = document.getElementById('btn-download-logs');
+      if (downloadBtn) {
+        downloadBtn.addEventListener('click', () => {
+          window.location.href = `/api/deployments/${deployment.id}/logs/export`;
+        });
+      }
+
+      // Cancel deployment
+      const cancelBtn = document.getElementById('btn-cancel-deploy');
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+          openModal({
+            title: 'Cancel Deployment',
+            bodyHtml: `
+              <p>Are you sure you want to abort deployment <strong>${deployment.id}</strong>?</p>
+              <p style="color: var(--color-status-warning); font-size: 12px; margin-top: 8px;">
+                Cancellation stops active processes and safely removes temporary staging containers without disrupting live traffic.
+              </p>
+            `,
+            confirmText: 'Abort Pipeline',
+            confirmClass: 'btn-danger',
+            onConfirm: async () => {
+              await api.cancelDeployment(deployment.id);
+              deployment.status = 'CANCELLED';
+              renderView();
+            },
+          });
+        });
+      }
+    }
+
+    renderView();
+
+    // Connect real-time Server-Sent Events stream
+    activeStream = new DeploymentEventStream(deploymentId);
+
+    activeStream.on('stage', (data) => {
+      const idx = deployment.stages.findIndex(s => s.stage_number === data.stageNumber);
+      if (idx !== -1) {
+        deployment.stages[idx].status = data.status;
+        deployment.stages[idx].duration_ms = data.durationMs;
+      }
+      deployment.current_stage = data.stageNumber;
+      deployment.current_stage_name = data.stageName;
+
+      // Update timeline
+      const timelineBox = document.getElementById('timeline-container');
+      if (timelineBox) {
+        timelineBox.innerHTML = renderPipelineTimeline(deployment.stages, selectedStageFilter, deployment.current_stage);
+        bindTimelineEvents(timelineBox, (num) => {
+          selectedStageFilter = (selectedStageFilter === num) ? null : num;
+          const streamContent = document.getElementById('log-stream-content');
+          updateLogLines(streamContent, currentLogs, selectedStageFilter, searchFilterText, autoScrollEnabled);
+        });
+      }
+    });
+
+    activeStream.on('log', (logEntry) => {
+      currentLogs.push(logEntry);
+      const streamContent = document.getElementById('log-stream-content');
+      updateLogLines(streamContent, currentLogs, selectedStageFilter, searchFilterText, autoScrollEnabled);
+    });
+
+    activeStream.on('probe', (probeData) => {
+      if (!deployment.probes) deployment.probes = [];
+      deployment.probes.push(probeData);
+    });
+
+    activeStream.on('status', (data) => {
+      deployment.status = data.status;
+      renderView();
+    });
+
+    activeStream.on('finished', (data) => {
+      deployment.status = data.status;
+      deployment.duration_ms = data.durationMs;
+      deployment.error_message = data.errorMessage;
+      renderView();
+    });
+
+    activeStream.connect();
+
+  } catch (err) {
+    container.innerHTML = `<div style="color: var(--color-status-error);">Error: ${err.message}</div>`;
+  }
+}
