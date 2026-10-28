@@ -3,3 +3,14 @@ data/*.db*
 data/*.sqlite*
 .DS_Store
 *.log
+
+# Local Workspace Tooling & NTFS Bridges (Canonical in .reference/system)
+graphify-out/
+.codebase-memory/
+.agents/
+.vscode/
+.codebase-memory.json
+.cbmignore
+**/docs-data.js
+**/docs-manifest.json
+.reference/
