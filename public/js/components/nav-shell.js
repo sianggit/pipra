@@ -6,13 +6,20 @@
 import { renderIcon } from '../icons.js';
 import { state } from '../state.js';
 import { api } from '../api.js';
+import { getTheme, toggleTheme } from '../theme.js';
+import { canDeploy } from '../auth.js';
 
 export function renderNavShell(activeRoute = 'overview') {
   const { user, activeEnvironment, environments = [] } = state.get();
-  const currentEnv = environments.find(e => e.name === activeEnvironment || e.id === activeEnvironment) || { 
-    name: activeEnvironment || 'devel', 
+  const theme = getTheme();
+  const logoSrc = theme === 'light' ? '/assets/logo-navy-tagline.png' : '/assets/logo-white-tagline.png';
+  const themeIcon = theme === 'dark' ? 'sun' : 'moon';
+  const themeLabel = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+
+  const currentEnv = environments.find(e => e.name === activeEnvironment || e.id === activeEnvironment) || {
+    name: activeEnvironment || 'devel',
     display_name: 'Development',
-    is_production: activeEnvironment === 'production' 
+    is_production: activeEnvironment === 'production'
   };
 
   return `
@@ -23,7 +30,7 @@ export function renderNavShell(activeRoute = 'overview') {
         </button>
 
         <a href="#/overview" class="pipra-brand" aria-label="Pipra — Pipeline & Release Engineering Platform">
-          <img src="/assets/logo.svg" alt="Pipra" class="pipra-brand-mark" width="148" height="34" />
+          <img id="pipra-brand-logo" src="${logoSrc}" alt="Pipra" class="pipra-brand-mark" width="148" height="34" />
         </a>
 
         <!-- Environment Operational Context -->
@@ -40,10 +47,12 @@ export function renderNavShell(activeRoute = 'overview') {
           ${renderIcon('activity', 14)}
           <span>Overview</span>
         </a>
-        <a href="#/deploy" class="pipra-nav-link ${activeRoute === 'deploy' ? 'active' : ''}">
-          ${renderIcon('play', 14)}
-          <span>Deploy</span>
-        </a>
+        ${canDeploy() ? `
+          <a href="#/deploy" class="pipra-nav-link ${activeRoute === 'deploy' ? 'active' : ''}">
+            ${renderIcon('play', 14)}
+            <span>Deploy</span>
+          </a>
+        ` : ''}
         <a href="#/history" class="pipra-nav-link ${activeRoute === 'history' ? 'active' : ''}">
           ${renderIcon('clock', 14)}
           <span>Deployments</span>
@@ -67,13 +76,18 @@ export function renderNavShell(activeRoute = 'overview') {
       </nav>
 
       <div class="pipra-header-actions">
+        <!-- Accessible Light/Dark Theme Switcher -->
+        <button id="btn-theme-toggle" class="btn btn-ghost btn-sm btn-icon" aria-label="${themeLabel}" title="${themeLabel}">
+          ${renderIcon(themeIcon, 15)}
+        </button>
+
         ${user ? `
           <div class="user-badge" aria-label="Authenticated operator: ${user.username} (${user.role})">
             ${renderIcon('user', 14)}
             <span>${user.username}</span>
             <span class="user-role-tag">${user.role}</span>
           </div>
-          <button id="btn-logout" class="btn btn-ghost btn-sm" aria-label="Sign out of platform" title="Sign out">
+          <button id="btn-logout" class="btn btn-ghost btn-sm btn-icon" aria-label="Sign out of platform" title="Sign out">
             ${renderIcon('log-out', 14)}
           </button>
         ` : `
@@ -85,6 +99,22 @@ export function renderNavShell(activeRoute = 'overview') {
 }
 
 export function bindNavShellEvents() {
+  const themeBtn = document.getElementById('btn-theme-toggle');
+  if (themeBtn) {
+    themeBtn.addEventListener('click', () => {
+      const newTheme = toggleTheme();
+      const logo = document.getElementById('pipra-brand-logo');
+      if (logo) {
+        logo.src = newTheme === 'light' ? '/assets/logo-navy-tagline.png' : '/assets/logo-white-tagline.png';
+      }
+      const nextIcon = newTheme === 'dark' ? 'sun' : 'moon';
+      const nextLabel = newTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+      themeBtn.setAttribute('aria-label', nextLabel);
+      themeBtn.setAttribute('title', nextLabel);
+      themeBtn.innerHTML = renderIcon(nextIcon, 15);
+    });
+  }
+
   const logoutBtn = document.getElementById('btn-logout');
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {

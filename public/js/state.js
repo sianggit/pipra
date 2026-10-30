@@ -6,6 +6,7 @@ class StateStore {
   constructor() {
     this.state = {
       user: null,
+      theme: 'dark',
       activeEnvironment: 'devel',
       environments: [],
       applications: [],

@@ -123,6 +123,13 @@ class ApiClient {
     return this.request('/api/environments');
   }
 
+  async updateEnvironment(id, payload) {
+    return this.request(`/api/environments/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
   // Agents & Infra
   async getAgents() {
     return this.request('/api/agents');

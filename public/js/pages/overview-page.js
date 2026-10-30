@@ -7,6 +7,7 @@
 import { api } from '../api.js';
 import { renderIcon } from '../icons.js';
 import { renderStatusBadge } from '../components/health-badge.js';
+import { canDeploy } from '../auth.js';
 
 export async function renderOverviewPage(container) {
   container.innerHTML = `
@@ -38,12 +39,14 @@ export async function renderOverviewPage(container) {
           </h1>
           <p class="page-subtitle">Real-time pipeline execution, serving environment health, and cutover telemetry.</p>
         </div>
-        <div>
-          <a href="#/deploy" class="btn btn-primary" aria-label="Start new deployment pipeline">
-            ${renderIcon('play', 14)}
-            <span>Start Deployment</span>
-          </a>
-        </div>
+        ${canDeploy() ? `
+          <div>
+            <a href="#/deploy" class="btn btn-primary" aria-label="Start new deployment pipeline">
+              ${renderIcon('play', 14)}
+              <span>Start Deployment</span>
+            </a>
+          </div>
+        ` : ''}
       </div>
 
       <!-- Restrained Operational Metrics Bar -->

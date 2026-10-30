@@ -7,6 +7,7 @@
 import { api } from '../api.js';
 import { renderIcon } from '../icons.js';
 import { state } from '../state.js';
+import { getTheme, toggleTheme } from '../theme.js';
 
 export async function renderAdminPage(container) {
   container.innerHTML = `
@@ -127,11 +128,21 @@ export async function renderAdminPage(container) {
 }
 
 export function renderLoginPage(container) {
+  const theme = getTheme();
+  const logoSrc = theme === 'light' ? '/assets/logo-navy-tagline.png' : '/assets/logo-white-tagline.png';
+  const themeIcon = theme === 'dark' ? 'sun' : 'moon';
+  const themeLabel = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+
   container.innerHTML = `
-    <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: var(--space-6); background-color: var(--color-surface-base);">
+    <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: var(--space-6); background-color: var(--color-surface-base); position: relative;">
+      <div style="position: absolute; top: var(--space-4); right: var(--space-6);">
+        <button id="btn-login-theme-toggle" class="btn btn-ghost btn-sm btn-icon" aria-label="${themeLabel}" title="${themeLabel}">
+          ${renderIcon(themeIcon, 15)}
+        </button>
+      </div>
       <div class="card" style="width: 100%; max-width: 400px; box-shadow: var(--shadow-dialog); margin-bottom: 0;">
         <div class="card-header" style="justify-content: center; flex-direction: column; text-align: center; gap: var(--space-2); padding: var(--space-6) var(--space-5);">
-          <img src="/assets/logo.svg" alt="Pipra" width="168" height="38" />
+          <img id="login-brand-logo" src="${logoSrc}" alt="Pipra" style="max-width: 95%; height: auto;" />
           <div style="font-size: 10px; font-weight: 600; letter-spacing: 0.08em; color: var(--color-text-secondary); text-transform: uppercase; margin-top: var(--space-1);">
             BUILD WITH CONFIDENCE. SHIP WITH CONTROL.
           </div>
@@ -165,6 +176,22 @@ export function renderLoginPage(container) {
       </div>
     </div>
   `;
+
+  const themeToggle = document.getElementById('btn-login-theme-toggle');
+  if (themeToggle) {
+    themeToggle.addEventListener('click', () => {
+      const nextTheme = toggleTheme();
+      const logo = document.getElementById('login-brand-logo');
+      if (logo) {
+        logo.src = nextTheme === 'light' ? '/assets/logo-navy-tagline.png' : '/assets/logo-white-tagline.png';
+      }
+      const nextIcon = nextTheme === 'dark' ? 'sun' : 'moon';
+      const nextLabel = nextTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
+      themeToggle.setAttribute('aria-label', nextLabel);
+      themeToggle.setAttribute('title', nextLabel);
+      themeToggle.innerHTML = renderIcon(nextIcon, 15);
+    });
+  }
 
   const form = document.getElementById('login-form');
   const errorBox = document.getElementById('login-error');

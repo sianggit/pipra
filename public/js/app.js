@@ -5,8 +5,10 @@
 import { Router } from './router.js';
 import { api } from './api.js';
 import { state } from './state.js';
+import { initTheme } from './theme.js';
 
 async function bootstrap() {
+  initTheme();
   const appContainer = document.getElementById('app');
 
   // Pre-load metadata

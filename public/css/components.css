@@ -415,6 +415,24 @@
   gap: var(--space-1);
 }
 
+/* Icon-Only Compact Button */
+.btn-icon {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+}
+
+.btn-icon:hover:not(:disabled) {
+  color: var(--color-text-primary);
+  background-color: var(--color-surface-strong);
+}
+
 /* ==========================================================================
    5. Accessible Status Badges (Dual Icon + Label)
    ========================================================================== */
@@ -712,7 +730,9 @@ input[type="checkbox"] {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.75);
+  background-color: var(--color-backdrop, rgba(0, 0, 0, 0.75));
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;

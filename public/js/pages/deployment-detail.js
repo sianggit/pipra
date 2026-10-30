@@ -11,6 +11,7 @@ import { renderPipelineTimeline, bindTimelineEvents } from '../components/pipeli
 import { renderLogViewer, updateLogLines } from '../components/log-viewer.js';
 import { DeploymentEventStream } from '../sse.js';
 import { openModal } from '../components/modal.js';
+import { canDeploy, canCancelDeployment } from '../auth.js';
 
 let activeStream = null;
 
@@ -63,17 +64,17 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
           </div>
 
           <div style="display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;">
-            ${isRunning ? `
+            ${isRunning && canCancelDeployment() ? `
               <button id="btn-cancel-deploy" class="btn btn-danger btn-sm" aria-label="Cancel active deployment">
                 ${renderIcon('x', 14)}
                 <span>Cancel Execution</span>
               </button>
-            ` : `
+            ` : (!isRunning && canDeploy() ? `
               <a href="#/deploy?app=${deployment.application_id}&env=${deployment.environment_id}&branch=${deployment.branch}" class="btn btn-primary btn-sm" aria-label="Re-deploy this revision">
                 ${renderIcon('play', 14)}
                 <span>Re-deploy</span>
               </a>
-            `}
+            ` : '')}
             <a href="/api/deployments/${deployment.id}/logs/export" target="_blank" class="btn btn-secondary btn-sm" title="Export complete raw log file">
               ${renderIcon('download', 14)}
               <span>Export Log</span>

@@ -7,6 +7,7 @@
 import { api } from '../api.js';
 import { renderIcon } from '../icons.js';
 import { openModal } from '../components/modal.js';
+import { canDeploy, canRegisterApp } from '../auth.js';
 
 export async function renderAppsPage(container) {
   container.innerHTML = `
@@ -27,12 +28,14 @@ export async function renderAppsPage(container) {
           </h1>
           <p class="page-subtitle">Configure application repositories, Docker build parameters, and health-check policies.</p>
         </div>
-        <div>
-          <button id="btn-register-app" class="btn btn-primary" aria-label="Register new application">
-            ${renderIcon('plus', 14)}
-            <span>Register Application</span>
-          </button>
-        </div>
+        ${canRegisterApp() ? `
+          <div>
+            <button id="btn-register-app" class="btn btn-primary" aria-label="Register new application">
+              ${renderIcon('plus', 14)}
+              <span>Register Application</span>
+            </button>
+          </div>
+        ` : ''}
       </div>
 
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: var(--space-5);">
@@ -43,10 +46,14 @@ export async function renderAppsPage(container) {
                 <span class="card-title">${app.display_name}</span>
                 <span style="font-family: var(--font-family-mono); font-size: 11px; color: var(--color-action-primary);">${app.name}</span>
               </div>
-              <a href="#/deploy?app=${app.id}" class="btn btn-primary btn-sm" aria-label="Deploy ${app.display_name}">
-                ${renderIcon('play', 12)}
-                <span>Deploy</span>
-              </a>
+              ${canDeploy() ? `
+                <a href="#/deploy?app=${app.id}" class="btn btn-primary btn-sm" aria-label="Deploy ${app.display_name}">
+                  ${renderIcon('play', 12)}
+                  <span>Deploy</span>
+                </a>
+              ` : `
+                <span class="badge badge-info" style="font-size: 10px;">Observation</span>
+              `}
             </div>
             <div class="card-body">
               <div style="display: flex; flex-direction: column; gap: var(--space-3);">

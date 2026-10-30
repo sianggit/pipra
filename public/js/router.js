@@ -13,6 +13,8 @@ import { renderInfraPage } from './pages/infra-page.js';
 import { renderAdminPage, renderLoginPage } from './pages/admin-page.js';
 import { state } from './state.js';
 import { api } from './api.js';
+import { renderIcon } from './icons.js';
+import { canDeploy } from './auth.js';
 
 export class Router {
   constructor(appContainer) {
@@ -74,7 +76,25 @@ export class Router {
     } else if (pathPart === '/environments') {
       renderEnvsPage(mainContent);
     } else if (pathPart === '/deploy') {
-      renderWizardPage(mainContent, query);
+      if (!canDeploy()) {
+        state.notifyToast('Deployment access requires Operator or Admin role', 'warning');
+        mainContent.innerHTML = `
+          <div class="card" style="border-left: 3px solid var(--color-status-warning); max-width: 680px; margin: var(--space-8) auto;">
+            <div class="card-body" style="padding: var(--space-6); text-align: center;">
+              <div style="color: var(--color-status-warning); margin-bottom: var(--space-3);">
+                ${renderIcon('shield', 32)}
+              </div>
+              <h2 style="margin-bottom: var(--space-2);">Access Restricted</h2>
+              <p style="color: var(--color-text-secondary); margin-bottom: var(--space-5); line-height: 1.6;">
+                Your current account role (<strong>${state.get().user?.role || 'viewer'}</strong>) is granted read-only observation permissions. Triggering pipeline deployments requires <strong>Operator</strong> or <strong>Admin</strong> privileges.
+              </p>
+              <a href="#/overview" class="btn btn-primary">Return to Overview</a>
+            </div>
+          </div>
+        `;
+      } else {
+        renderWizardPage(mainContent, query);
+      }
     } else if (pathPart.startsWith('/deployments/')) {
       const deploymentId = pathPart.replace('/deployments/', '');
       renderDeploymentDetailPage(mainContent, deploymentId);

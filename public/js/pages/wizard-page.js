@@ -7,6 +7,7 @@
 import { api } from '../api.js';
 import { renderIcon } from '../icons.js';
 import { state } from '../state.js';
+import { canDeploy } from '../auth.js';
 
 export async function renderWizardPage(container, params = {}) {
   container.innerHTML = `
@@ -172,12 +173,19 @@ export async function renderWizardPage(container, params = {}) {
               </div>
             </div>
 
+            ${!canDeploy() ? `
+              <div style="margin-top: var(--space-4); padding: var(--space-3) var(--space-4); background-color: var(--color-status-warning-bg); border: 1px solid var(--color-status-warning-border); border-radius: var(--radius-sm); font-size: 12px; color: var(--color-text-primary); display: flex; align-items: center; gap: var(--space-2);">
+                ${renderIcon('shield', 16)}
+                <span><strong>Observation Mode:</strong> Your account has read-only access. Launching deployments requires Operator or Admin role.</span>
+              </div>
+            ` : ''}
+
             <div id="wizard-error" style="display: none; margin-top: var(--space-4); padding: var(--space-3) var(--space-4); background-color: var(--color-status-danger-bg); border: 1px solid var(--color-status-danger-border); border-radius: var(--radius-sm); color: var(--color-status-danger); font-size: 12px;"></div>
           </div>
 
           <div class="card-footer" style="justify-content: flex-end; gap: var(--space-3);">
             <a href="#/overview" class="btn btn-secondary">Cancel</a>
-            <button type="submit" id="btn-submit-deploy" class="btn btn-primary">
+            <button type="submit" id="btn-submit-deploy" class="btn btn-primary" ${!canDeploy() ? 'disabled title="Operator or Admin role required"' : ''}>
               ${renderIcon('play', 14)}
               <span>Launch Deployment Pipeline</span>
             </button>
