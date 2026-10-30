@@ -5,7 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Pipra — Pipeline & Release Engineering Platform</title>
   <meta name="description" content="Self-hosted deployment orchestration platform with zero-downtime cutover, real-time observability, verified health checks, and dependable rollback." />
-  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <link rel="icon" type="image/x-icon" href="/assets/favicon.ico" />
+
+  <!-- Early Theme Pre-Hydration (0ms FOUC Prevention) -->
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('pipra-theme');
+        var theme = saved || 'dark';
+        document.documentElement.setAttribute('data-theme', theme);
+        if (theme === 'light') {
+          window.addEventListener('DOMContentLoaded', function() {
+            var el = document.getElementById('pipra-init-logo');
+            if (el) el.src = '/assets/logo-navy-tagline.png';
+          });
+        }
+      } catch (e) {}
+    })();
+  </script>
 
   <!-- Google Fonts: Inter -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -21,7 +38,7 @@
   <div id="app">
     <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--color-surface-base, #000000); color: var(--color-text-primary, #edf1f7);">
       <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
-        <img src="/assets/logo.svg" alt="Pipra" width="148" height="34" />
+        <img id="pipra-init-logo" src="/assets/logo-white-tagline.png" alt="Pipra" style="height: 38px; width: auto;" />
         <div style="font-size: 13px; color: var(--color-text-secondary, #94a3b8); font-family: var(--font-family-mono, monospace);">Initializing Pipra Control Plane...</div>
       </div>
     </div>
