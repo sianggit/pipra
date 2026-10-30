@@ -11,6 +11,7 @@ const {
   validateContainerName,
   validatePort,
   validateEnvFile,
+  validateHost,
 } = require('../../src/utils/sanitizer');
 
 test('Sanitizer: Redacts passwords and tokens from command output', () => {
@@ -40,6 +41,13 @@ test('Sanitizer: Parameter allowlists accept valid inputs', () => {
   assert.strictEqual(validatePort(4000), true);
   assert.strictEqual(validateEnvFile('.env.development'), true);
   assert.strictEqual(validateEnvFile('.env.production'), true);
+
+  // Host validator tests
+  assert.strictEqual(validateHost('127.0.0.1'), true);
+  assert.strictEqual(validateHost('192.168.1.100'), true);
+  assert.strictEqual(validateHost('10.25.207.222'), true);
+  assert.strictEqual(validateHost('srv-deploy-01.asyst.co.id'), true);
+  assert.strictEqual(validateHost('localhost'), true);
 });
 
 test('Sanitizer: Parameter allowlists reject injection & traversal attempts', () => {
@@ -47,6 +55,12 @@ test('Sanitizer: Parameter allowlists reject injection & traversal attempts', ()
   assert.strictEqual(validateBranch('devel && whoami'), false);
   assert.strictEqual(validateBranch('devel | cat /etc/passwd'), false);
   assert.strictEqual(validateBranch('../../../etc/passwd'), false);
+
+  assert.strictEqual(validateHost('127.0.0.1; whoami'), false);
+  assert.strictEqual(validateHost('127.0.0.1 && cat /etc/shadow'), false);
+  assert.strictEqual(validateHost('host with spaces'), false);
+  assert.strictEqual(validateHost(''), false);
+  assert.strictEqual(validateHost('999.999.999.999'), false);
 
   assert.strictEqual(validatePort(-1), false);
   assert.strictEqual(validatePort(70000), false);

@@ -5,6 +5,7 @@
 
 const crypto = require('node:crypto');
 const logger = require('../utils/logger');
+const config = require('../config');
 
 function hashPassword(password) {
   const salt = 'pipra_salt_2026';
@@ -70,13 +71,15 @@ function seedDatabase(db) {
   }
 
   const envCount = db.prepare('SELECT COUNT(*) as count FROM environments').get().count;
+  const defaultHost = config.DEFAULT_TARGET_HOST;
   if (envCount === 0) {
-    logger.info('Seeding deployment environments: devel, staging, production...');
+    logger.info(`Seeding deployment environments (default target host: ${defaultHost})...`);
     const insertEnv = db.prepare(`
       INSERT INTO environments (
         id, name, display_name, is_production, host, agent_id,
+        auth_type, ssh_user, ssh_port,
         active_release_id, last_health_status, last_verified_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     insertEnv.run(
@@ -84,8 +87,11 @@ function seedDatabase(db) {
       'devel',
       'Development',
       0,
-      '172.25.207.222',
+      defaultHost,
       'agent-devel-prod',
+      'NONE',
+      'devel',
+      22,
       'asdp-dims-fe:devel-20261027-v1.0.4',
       'HEALTHY',
       now
@@ -96,8 +102,11 @@ function seedDatabase(db) {
       'staging',
       'Staging / QA',
       0,
-      '172.25.207.222',
+      defaultHost,
       'agent-devel-prod',
+      'NONE',
+      'devel',
+      22,
       'asdp-dims-fe:staging-20261027-v1.0.3',
       'HEALTHY',
       now
@@ -108,8 +117,11 @@ function seedDatabase(db) {
       'production',
       'Production',
       1,
-      '172.25.207.222',
+      defaultHost,
       'agent-devel-prod',
+      'NONE',
+      'devel',
+      22,
       'asdp-dims-fe:prod-20261026-v1.0.0',
       'HEALTHY',
       now
@@ -142,7 +154,7 @@ function seedDatabase(db) {
     insertAgent.run(
       'agent-devel-prod',
       'Devel/Prod Target Host',
-      '172.25.207.222',
+      defaultHost,
       'Docker Engine v26.1.3 (Linux x86_64)',
       'ONLINE',
       0,

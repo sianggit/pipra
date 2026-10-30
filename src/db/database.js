@@ -75,6 +75,11 @@ function initSchema(db) {
       is_production INTEGER NOT NULL DEFAULT 0,
       host TEXT NOT NULL DEFAULT '127.0.0.1',
       agent_id TEXT NOT NULL DEFAULT 'agent-local',
+      auth_type TEXT NOT NULL DEFAULT 'NONE',
+      ssh_user TEXT NOT NULL DEFAULT 'devel',
+      ssh_port INTEGER NOT NULL DEFAULT 22,
+      encrypted_credential TEXT,
+      credential_updated_at TEXT,
       active_release_id TEXT,
       last_health_status TEXT NOT NULL DEFAULT 'UNKNOWN',
       last_verified_at TEXT
@@ -180,6 +185,28 @@ function initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_deployment_logs_deploy ON deployment_logs(deployment_id, id);
     CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
   `);
+
+  // Migrate environments table columns if missing
+  try {
+    const envCols = db.prepare('PRAGMA table_info(environments)').all().map(c => c.name);
+    if (!envCols.includes('auth_type')) {
+      db.exec("ALTER TABLE environments ADD COLUMN auth_type TEXT NOT NULL DEFAULT 'NONE';");
+    }
+    if (!envCols.includes('ssh_user')) {
+      db.exec("ALTER TABLE environments ADD COLUMN ssh_user TEXT NOT NULL DEFAULT 'devel';");
+    }
+    if (!envCols.includes('ssh_port')) {
+      db.exec("ALTER TABLE environments ADD COLUMN ssh_port INTEGER NOT NULL DEFAULT 22;");
+    }
+    if (!envCols.includes('encrypted_credential')) {
+      db.exec("ALTER TABLE environments ADD COLUMN encrypted_credential TEXT;");
+    }
+    if (!envCols.includes('credential_updated_at')) {
+      db.exec("ALTER TABLE environments ADD COLUMN credential_updated_at TEXT;");
+    }
+  } catch (err) {
+    logger.warn('Environment schema migration check note:', err.message);
+  }
 }
 
 module.exports = {

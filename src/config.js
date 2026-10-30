@@ -13,6 +13,8 @@ module.exports = {
   DB_PATH: process.env.PIPRA_DB_PATH || path.join(DATA_DIR, 'pipra.db'),
   EXEC_MODE: process.env.PIPRA_EXEC_MODE || 'auto', // 'auto', 'docker', 'sim'
   SESSION_SECRET: process.env.SESSION_SECRET || 'pipra-secure-session-key-asdp-dims-2026',
+  MASTER_KEY: process.env.PIPRA_MASTER_KEY || process.env.SESSION_SECRET || 'pipra-secure-session-key-asdp-dims-2026',
+  DEFAULT_TARGET_HOST: process.env.PIPRA_TARGET_HOST || process.env.TARGET_HOST || '127.0.0.1',
   SESSION_TTL_HOURS: 24,
   MAX_LOG_HISTORY_LINES: 2000,
   DEFAULT_HEALTHCHECK_RETRIES: 15,

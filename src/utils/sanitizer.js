@@ -62,6 +62,23 @@ function validateEnvFile(file) {
   return /^\.env(\.[a-zA-Z0-9_-]+)?$/.test(file);
 }
 
+function validateHost(host) {
+  if (!host || typeof host !== 'string') return false;
+  const trimmed = host.trim();
+  if (trimmed.length === 0 || trimmed.length > 255) return false;
+  if (/[\s;`$&|><"'\\]/.test(trimmed)) return false;
+
+  // If it consists of only digits and dots, it must be a valid IPv4 address
+  if (/^[0-9.]+$/.test(trimmed)) {
+    const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+    return ipv4Regex.test(trimmed);
+  }
+
+  // Otherwise validate valid RFC-compliant hostname
+  const hostnameRegex = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  return hostnameRegex.test(trimmed);
+}
+
 module.exports = {
   redactSecrets,
   validateBranch,
@@ -69,4 +86,5 @@ module.exports = {
   validateContainerName,
   validatePort,
   validateEnvFile,
+  validateHost,
 };
