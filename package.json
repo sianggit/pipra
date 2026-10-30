@@ -10,6 +10,7 @@
     "test": "node --test test/**/*.test.js",
     "test:unit": "node --test test/unit/*.test.js",
     "test:integration": "node --test test/integration/*.test.js",
+    "db:reset": "node scripts/reset-db.js",
     "ref": "node scripts/ref.js"
   },
   "keywords": [
