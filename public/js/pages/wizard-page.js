@@ -165,6 +165,10 @@ export async function renderWizardPage(container, params = {}) {
         </div>
       `;
 
+      const branchDisplay = permittedBranches.includes('*')
+        ? 'All branches permitted (*)'
+        : permittedBranches.join(', ');
+
       // Step 2: Revision & Docker Image
       const step2Html = `
         <div class="fl" style="gap: 16px;">
@@ -174,8 +178,8 @@ export async function renderWizardPage(container, params = {}) {
               <input id="wz-branch" type="text" value="${wz.branch}" aria-invalid="${!isRefValid}" style="width: 100%; height: 36px; padding: 0 10px; background: var(--in); border: 1px solid var(--bd); border-radius: 6px;" />
               <div id="wz-branch-hint" class="${isRefValid ? 'hint' : 'err'}" style="font-size: 12px; margin-top: 5px; color: ${isRefValid ? 'var(--t3)' : 'var(--bad)'};">
                 ${isRefValid
-                  ? `Permitted for ${currentApp.display_name || currentApp.name}: ${permittedBranches.join(', ')}`
-                  : `Not a permitted ref for ${currentApp.display_name || currentApp.name}. Allowed: ${permittedBranches.join(', ')}`}
+                  ? `Permitted for ${currentApp.display_name || currentApp.name}: ${branchDisplay}`
+                  : `Not a permitted ref for ${currentApp.display_name || currentApp.name}. Allowed: ${branchDisplay}`}
               </div>
             </div>
             <div>
@@ -360,8 +364,8 @@ export async function renderWizardPage(container, params = {}) {
             hintEl.className = valid ? 'hint' : 'err';
             hintEl.style.color = valid ? 'var(--t3)' : 'var(--bad)';
             hintEl.textContent = valid
-              ? `Permitted for ${currentApp.display_name || currentApp.name}: ${permittedBranches.join(', ')}`
-              : `Not a permitted ref for ${currentApp.display_name || currentApp.name}. Allowed: ${permittedBranches.join(', ')}`;
+              ? `Permitted for ${currentApp.display_name || currentApp.name}: ${branchDisplay}`
+              : `Not a permitted ref for ${currentApp.display_name || currentApp.name}. Allowed: ${branchDisplay}`;
           }
           const nextBtn = document.getElementById('btn-wizard-next');
           if (nextBtn) nextBtn.disabled = !valid || !wz.tag;

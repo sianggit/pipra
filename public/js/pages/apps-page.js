@@ -330,6 +330,7 @@ function bindAppsPageEvents(apps, container) {
           <div>
             <label for="edit-app-permitted">Permitted Branches (comma-separated)</label>
             <input type="text" id="edit-app-permitted" class="mono" value="${branchesStr}" required style="width: 100%; height: 36px; padding: 0 10px; background: var(--in); border: 1px solid var(--bd); border-radius: 6px;" />
+            <div class="hint" style="font-size: 11px; color: var(--t3); margin-top: 3px;">Use <code>*</code> to permit any custom branch name, or enter patterns (e.g. <code>develop-*, release/*, *</code>).</div>
           </div>
 
           <div>
