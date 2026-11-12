@@ -1,8 +1,21 @@
 {
-  "name": "pipra",
-  "version": "1.0.0",
-  "description": "Pipeline & Release Engineering Platform",
+  "name": "pipra-ci",
+  "version": "1.5.0",
+  "description": "Enterprise-grade continuous delivery and deployment orchestration platform with zero-downtime cutover and SLSA provenance",
   "main": "server.js",
+  "bin": {
+    "pipra": "./bin/pipra.js",
+    "pipra-ci": "./bin/pipra.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "public/",
+    "server.js",
+    "package.json",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "commonjs",
   "scripts": {
     "start": "node server.js",
@@ -11,6 +24,8 @@
     "test:unit": "node --test test/unit/*.test.js",
     "test:integration": "node --test test/integration/*.test.js",
     "db:reset": "node scripts/reset-db.js",
+    "db:flush": "node scripts/reset-db.js",
+    "db:demo": "node scripts/reset-db.js --demo",
     "ref": "node scripts/ref.js"
   },
   "keywords": [
@@ -19,10 +34,14 @@
     "release-engineering",
     "devops",
     "docker",
-    "blue-green"
+    "blue-green",
+    "ci-cd",
+    "gitops",
+    "slsa",
+    "dora-metrics"
   ],
-  "author": "ASYST Platform Engineering",
-  "license": "UNLICENSED",
+  "author": "Anggit Arisa Siwi Pratama",
+  "license": "MIT",
   "engines": {
     "node": ">=20.0.0"
   }

@@ -32,63 +32,63 @@ PAGES = [
         "id": "01_login",
         "route": "#/login",
         "name": "Login Screen",
-        "wait_selector": "#login-form",
+        "wait_selector": "#login-form, .lc",
         "auth_required": False
     },
     {
         "id": "02_overview",
         "route": "#/overview",
         "name": "Overview Dashboard",
-        "wait_selector": ".stats-grid",
+        "wait_selector": ".strip, .stats-grid, .pn",
         "auth_required": True
     },
     {
         "id": "03_applications",
         "route": "#/applications",
         "name": "Applications Registry",
-        "wait_selector": ".card",
+        "wait_selector": ".pn, .card",
         "auth_required": True
     },
     {
         "id": "04_environments",
         "route": "#/environments",
         "name": "Environments & Health",
-        "wait_selector": ".card",
+        "wait_selector": ".pn, .card",
         "auth_required": True
     },
     {
         "id": "05_deploy_wizard",
         "route": "#/deploy",
         "name": "Deployment Wizard",
-        "wait_selector": "#wizard-form",
+        "wait_selector": ".wz, .stp, #wizard-form",
         "auth_required": True
     },
     {
         "id": "06_deployment_detail",
         "route": "#/deployments/pipra-deploy-20261028-104838-87ee",
         "name": "Deployment Detail & Log Viewer",
-        "wait_selector": ".terminal-log-viewer, .pipeline-timeline",
+        "wait_selector": ".cols, .tl, .bar",
         "auth_required": True
     },
     {
         "id": "07_history",
         "route": "#/history",
         "name": "Deployment History",
-        "wait_selector": ".table",
+        "wait_selector": ".tw, table",
         "auth_required": True
     },
     {
         "id": "08_infrastructure",
         "route": "#/infrastructure",
         "name": "Infrastructure Nodes",
-        "wait_selector": ".card",
+        "wait_selector": ".tw, table",
         "auth_required": True
     },
     {
         "id": "09_admin",
         "route": "#/admin",
         "name": "Administration & Audit Logs",
-        "wait_selector": ".card",
+        "wait_selector": ".tw, table",
         "auth_required": True
     }
 ]
@@ -134,6 +134,20 @@ def capture_all():
     try:
         wait_for_server()
         token = login_and_get_token()
+
+        # Dynamically discover an active/seeded deployment ID for detail view
+        try:
+            dep_req = urllib.request.Request(f"{BASE_URL}/api/deployments", headers={"Authorization": f"Bearer {token}"})
+            with urllib.request.urlopen(dep_req) as dep_resp:
+                deps = json.loads(dep_resp.read().decode("utf-8"))
+                if deps and len(deps) > 0:
+                    real_dep_id = deps[0]["id"]
+                    for p in PAGES:
+                        if p["id"] == "06_deployment_detail":
+                            p["route"] = f"#/deployments/{real_dep_id}"
+                            print(f"Detail screenshot routed to live deployment: {real_dep_id}")
+        except Exception as e:
+            print(f"Could not query dynamic deployment ID: {e}")
 
         # 2. Configure Selenium Headless Chrome
         print("Initializing Headless Chrome driver...")

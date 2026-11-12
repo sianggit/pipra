@@ -1,0 +1,19 @@
+services:
+  pipra:
+    image: ghcr.io/anggit-arisa/pipra:latest
+    container_name: pipra
+    restart: unless-stopped
+    ports:
+      - "4200:4200"
+    volumes:
+      - pipra_data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - PORT=4200
+      - NODE_ENV=production
+      - EXEC_MODE=auto
+
+volumes:
+  pipra_data:
+    driver: local
+
