@@ -3,6 +3,9 @@
 For UI, copy, people, mobile layout, or code comments work, read `antislop.md` (core) and then the skill for the task:
 - Core filter, always on: `.reference/system/agents/skills/antislop/SKILL.md` (or `skills/antislop/SKILL.md`)
 - UI / visual: `.reference/system/agents/skills/antislop-ui/SKILL.md` (or `skills/antislop-ui/SKILL.md`)
+- Design system & lifecycle: `.reference/system/agents/skills/fe-design-impeccable/SKILL.md` (or `skills/fe-design-impeccable/SKILL.md`)
+- Micro-interactions & motion: `.reference/system/agents/skills/fe-craft-animation/SKILL.md` (or `skills/fe-craft-animation/SKILL.md`)
+- Mobile & Expo gestures: `.reference/system/agents/skills/fe-craft-expo/SKILL.md` (or `skills/fe-craft-expo/SKILL.md`)
 - Copy & text: `.reference/system/agents/skills/antislop-copywriting/SKILL.md` (or `skills/antislop-copywriting/SKILL.md`)
 - People / Accessibility: `.reference/system/agents/skills/antislop-human/SKILL.md` (or `skills/antislop-human/SKILL.md`)
 - Mobile / responsive: `.reference/system/agents/skills/antislop-layoutmobile/SKILL.md` (or `skills/antislop-layoutmobile/SKILL.md`)

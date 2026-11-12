@@ -3,6 +3,9 @@
 For UI, copy, people, mobile layout, or code comments work, read `antislop.md` (core) and then the skill for the task:
 - Core filter, always on: `.reference/system/agents/skills/antislop/SKILL.md` (or `skills/antislop/SKILL.md`)
 - UI / visual: `.reference/system/agents/skills/antislop-ui/SKILL.md` (or `skills/antislop-ui/SKILL.md`)
+- Design system & lifecycle: `.reference/system/agents/skills/fe-design-impeccable/SKILL.md` (or `skills/fe-design-impeccable/SKILL.md`)
+- Micro-interactions & motion: `.reference/system/agents/skills/fe-craft-animation/SKILL.md` (or `skills/fe-craft-animation/SKILL.md`)
+- Mobile & Expo gestures: `.reference/system/agents/skills/fe-craft-expo/SKILL.md` (or `skills/fe-craft-expo/SKILL.md`)
 - Copy & text: `.reference/system/agents/skills/antislop-copywriting/SKILL.md` (or `skills/antislop-copywriting/SKILL.md`)
 - People / Accessibility: `.reference/system/agents/skills/antislop-human/SKILL.md` (or `skills/antislop-human/SKILL.md`)
 - Mobile / responsive: `.reference/system/agents/skills/antislop-layoutmobile/SKILL.md` (or `skills/antislop-layoutmobile/SKILL.md`)
@@ -12,4 +15,3 @@ Only an explicit choice of antislop during or after selects a session mode. A re
 If the mode is unresolved, ask during/after and end the response; wait for the answer before any UI review, planning, or concept. For read-only tasks, put the active-mode notice only at the start of the final answer, never in progress messages. For editing tasks, announce before the first edit and omit it from the final answer.
 To update antislop later: run `portal update` or `portal antislop update`.
 <!-- antislop:end -->
-
