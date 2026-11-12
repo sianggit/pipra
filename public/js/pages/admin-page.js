@@ -130,8 +130,8 @@ export function renderLoginPage(container) {
       <div class="lc" style="width: 100%; max-width: 400px; border: 1px solid var(--bd); border-radius: 14px; background: var(--sf); box-shadow: var(--sh); overflow: hidden;">
         <div class="top" style="padding: 28px 28px 20px; display: grid; gap: 14px; justify-items: center; border-bottom: 1px solid var(--bs); text-align: center;">
           <div style="display: flex; gap: 10px; align-items: center;">
-            <img class="s" src="/assets/logo.png" alt="Pipra" style="height: 38px; width: auto;" />
-            <span style="font-size: 24px; font-weight: 700; color: var(--t1); letter-spacing: -0.02em;">Pipra</span>
+            <img class="s" src="/assets/pipra-bird.png" alt="" />
+            <img class="w" src="/assets/pipra-wordmark.png" alt="Pipra" />
           </div>
           <div class="dim" style="font-size: 12px;">Pipeline &amp; Release Engineering Platform</div>
         </div>
@@ -140,13 +140,13 @@ export function renderLoginPage(container) {
           <div id="login-error-msg" style="display: none; padding: 8px 12px; background: color-mix(in srgb, var(--bad) 12%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent); border-radius: 6px; color: var(--bad); font-size: 12px;"></div>
 
           <div>
-            <label for="u" style="display: block; font-weight: 500; margin-bottom: 5px;">Operator username</label>
-            <input id="u" type="text" autocomplete="username" value="operator" required style="width: 100%; height: 36px; padding: 0 10px; background: var(--in); border: 1px solid var(--bd); border-radius: 6px;" />
+            <label for="u">Operator username</label>
+            <input id="u" type="text" autocomplete="username" value="operator" required />
           </div>
 
           <div>
-            <label for="pw" style="display: block; font-weight: 500; margin-bottom: 5px;">Password</label>
-            <input id="pw" type="password" autocomplete="current-password" value="operator123" required style="width: 100%; height: 36px; padding: 0 10px; background: var(--in); border: 1px solid var(--bd); border-radius: 6px;" />
+            <label for="pw">Password</label>
+            <input id="pw" type="password" autocomplete="current-password" value="pipra-ops-2026" required />
           </div>
 
           <button type="submit" id="btn-submit-login" class="btn p" style="height: 38px; width: 100%; margin-top: 4px;">
@@ -157,9 +157,9 @@ export function renderLoginPage(container) {
         <details style="padding: 8px 28px 24px;">
           <summary class="t2" style="cursor: pointer; font-size: 12px;">Prototype accounts</summary>
           <div class="chips" style="margin-top: 10px;">
-            <button type="button" class="chip" data-user="admin" data-pw="admin123">admin</button>
-            <button type="button" class="chip" data-user="operator" data-pw="operator123">operator</button>
-            <button type="button" class="chip" data-user="viewer" data-pw="viewer123">viewer</button>
+            <button type="button" class="chip" data-user="admin" data-pw="pipra-admin-2026">admin</button>
+            <button type="button" class="chip" data-user="operator" data-pw="pipra-ops-2026" aria-pressed="true">operator</button>
+            <button type="button" class="chip" data-user="viewer" data-pw="pipra-viewer-2026">viewer</button>
           </div>
           <div class="hint" style="font-size: 11px; color: var(--t3); margin-top: 6px;">
             Role permissions and route gating are enforced.
@@ -187,6 +187,8 @@ export function renderLoginPage(container) {
   const chips = container.querySelectorAll('.chip');
   chips.forEach(chip => {
     chip.addEventListener('click', () => {
+      chips.forEach(c => c.removeAttribute('aria-pressed'));
+      chip.setAttribute('aria-pressed', 'true');
       const u = chip.getAttribute('data-user');
       const pw = chip.getAttribute('data-pw');
       const uInput = document.getElementById('u');

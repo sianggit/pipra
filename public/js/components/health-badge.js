@@ -1,95 +1,63 @@
 /**
  * Pipra Accessible Status Badge Component
- * Strict dual-state mapping (SVG icon + uppercase text) for WCAG 2.2 AA non-color-only compliance.
+ * Aligned with Redesigned Control Plane Mockup
  */
 
-import { renderIcon } from '../icons.js';
+import { ic } from '../icons.js';
+
+const SB = {
+  s: ['ok', 'check', 'Verified'],
+  f: ['bad', 'x', 'Failed'],
+  c: ['neu', 'ban', 'Cancelled'],
+  k: ['neu', 'minus', 'Skipped']
+};
+
+export function renderBadgeByCode(code) {
+  const item = SB[code] || SB.c;
+  return `<span class="b ${item[0]}">${ic(item[1])}${item[2]}</span>`;
+}
 
 export function renderStatusBadge(status) {
   const s = (status || 'UNKNOWN').toUpperCase();
 
   switch (s) {
     case 'SUCCEEDED':
+    case 'VERIFIED':
     case 'HEALTHY':
     case 'ONLINE':
-      return `
-        <span class="badge badge-success" role="status" aria-label="Status: ${s}">
-          <span class="badge-dot" aria-hidden="true"></span>
-          ${renderIcon('check', 11)}
-          <span>${s}</span>
-        </span>
-      `;
+      return `<span class="b ok">${ic('check')}Verified</span>`;
 
     case 'FAILED':
     case 'OFFLINE':
     case 'UNHEALTHY':
-      return `
-        <span class="badge badge-error" role="status" aria-label="Status: ${s}">
-          <span class="badge-dot" aria-hidden="true"></span>
-          ${renderIcon('x', 11)}
-          <span>${s}</span>
-        </span>
-      `;
+      return `<span class="b bad">${ic('x')}Failed</span>`;
 
     case 'ROLLBACK_FAILED':
-      return `
-        <span class="badge badge-error" style="border: 1px solid var(--color-status-danger); font-weight: 700;" role="alert" aria-label="Emergency: Rollback Failed">
-          <span class="badge-dot" aria-hidden="true"></span>
-          ${renderIcon('alert-triangle', 11)}
-          <span>ROLLBACK FAILED</span>
-        </span>
-      `;
+      return `<span class="b bad">${ic('warn')}Rollback failed</span>`;
 
-    case 'ROLLING_BACK':
     case 'ROLLED_BACK':
-      return `
-        <span class="badge badge-warning" role="status" aria-label="Status: ${s}">
-          <span class="badge-dot" aria-hidden="true"></span>
-          ${renderIcon('rotate-ccw', 11)}
-          <span>${s.replace('_', ' ')}</span>
-        </span>
-      `;
+    case 'ROLLING_BACK':
+      return `<span class="b warn">${ic('rot')}Rolled back</span>`;
 
     case 'RUNNING':
-    case 'PREPARING':
-    case 'VERIFYING':
-    case 'CUTTING_OVER':
-    case 'BUSY':
-      return `
-        <span class="badge badge-running" role="status" aria-label="Status: ${s}">
-          <span class="badge-dot" aria-hidden="true"></span>
-          ${renderIcon('activity', 11)}
-          <span>${s.replace('_', ' ')}</span>
-        </span>
-      `;
+    case 'IN_PROGRESS':
+    case 'EXECUTING':
+      return `<span class="b info">${ic('play')}Running</span>`;
 
     case 'CANCELLED':
-    case 'INTERRUPTED':
-      return `
-        <span class="badge badge-warning" role="status" aria-label="Status: ${s}">
-          <span class="badge-dot" aria-hidden="true"></span>
-          ${renderIcon('alert-circle', 11)}
-          <span>${s}</span>
-        </span>
-      `;
+      return `<span class="b neu">${ic('ban')}Cancelled</span>`;
+
+    case 'WAITING_FOR_APPROVAL':
+      return `<span class="b warn">${ic('shield')}Awaiting Approval</span>`;
 
     case 'QUEUED':
     case 'PENDING':
-      return `
-        <span class="badge badge-neutral" role="status" aria-label="Status: ${s}">
-          <span class="badge-dot" aria-hidden="true"></span>
-          ${renderIcon('clock', 11)}
-          <span>${s}</span>
-        </span>
-      `;
+      return `<span class="b neu">${ic('clock')}Queued</span>`;
+
+    case 'SKIPPED':
+      return `<span class="b neu">${ic('minus')}Skipped</span>`;
 
     default:
-      return `
-        <span class="badge badge-neutral" role="status" aria-label="Status: ${s}">
-          <span class="badge-dot" aria-hidden="true"></span>
-          ${renderIcon('alert-circle', 11)}
-          <span>${s}</span>
-        </span>
-      `;
+      return `<span class="b neu">${ic('ban')}${s}</span>`;
   }
 }

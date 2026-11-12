@@ -1,9 +1,9 @@
 /**
  * Pipra Navigation Shell Component
- * Aligned with DESIGN.md & Anti-Slop Layout Standards
+ * Exact match with Redesigned Control Plane Mockup
  */
 
-import { renderIcon } from '../icons.js';
+import { ic } from '../icons.js';
 import { state } from '../state.js';
 import { api } from '../api.js';
 import { getTheme, toggleTheme } from '../theme.js';
@@ -22,7 +22,7 @@ export function renderNavShell(activeRoute = 'overview') {
   };
 
   const navItems = [
-    { id: 'overview', label: 'Overview', icon: 'activity', path: '#/overview' },
+    { id: 'overview', label: 'Overview', icon: 'act', path: '#/overview' },
     ...(canDeploy() ? [{ id: 'deploy', label: 'Deploy', icon: 'play', path: '#/deploy' }] : []),
     { id: 'history', label: 'Deployments', icon: 'clock', path: '#/history' },
     { id: 'applications', label: 'Applications', icon: 'layers', path: '#/applications' },
@@ -32,54 +32,45 @@ export function renderNavShell(activeRoute = 'overview') {
   ];
 
   return `
-    <header class="hd" role="banner">
-      <button id="mobile-nav-toggle" class="ib mobile-only" aria-label="Toggle navigation menu" aria-expanded="false" style="display: none;">
-        ${renderIcon('menu', 16)}
+    <header class="hd">
+      <button class="logo" onclick="location.hash='#/overview'" aria-label="Pipra home">
+        <img class="s" src="/assets/pipra-bird.png" alt="" />
+        <img class="w" src="/assets/pipra-wordmark.png" alt="Pipra" />
       </button>
 
-      <a href="#/overview" class="logo" aria-label="Pipra Control Plane">
-        <img class="s" src="/assets/logo.png" alt="Pipra" style="height: 26px; width: auto;" />
-        <span style="font-size: 17px; font-weight: 700; letter-spacing: -0.02em; color: var(--t1); margin-left: 2px;">Pipra</span>
-      </a>
-
-      <!-- Environment Operational Context Badge -->
-      <span class="ctx" role="status" aria-label="Active environment: ${currentEnv.display_name || currentEnv.name}">
+      <span class="ctx">
         <b style="background: ${currentEnv.is_production ? 'var(--bad)' : 'var(--info)'};"></b>
         <span>${currentEnv.display_name || currentEnv.name || 'Development'}</span>
       </span>
 
-      <!-- Primary Navigation Links -->
-      <nav id="pipra-main-nav" aria-label="Primary Navigation" style="display: flex; gap: 2px; overflow-x: auto; flex: 1; scrollbar-width: none;">
+      <nav aria-label="Primary">
         ${navItems.map(item => {
           const isActive = activeRoute === item.id || (item.id === 'history' && activeRoute === 'deployments');
           return `
-            <a href="${item.path}" class="pipra-nav-link ${isActive ? 'active' : ''}" ${isActive ? 'aria-current="page"' : ''}>
-              ${renderIcon(item.icon, 15)}
+            <a href="${item.path}" ${isActive ? 'aria-current="page"' : ''}>
+              ${ic(item.icon)}
               <span>${item.label}</span>
             </a>
           `;
         }).join('')}
       </nav>
 
-      <!-- Header Actions -->
-      <div style="display: flex; align-items: center; gap: 8px;">
-        <button id="btn-theme-toggle" class="ib" aria-label="${themeLabel}" title="${themeLabel}">
-          ${renderIcon(themeIcon, 15)}
-        </button>
+      <button id="btn-theme-toggle" class="ib" aria-label="${themeLabel}">
+        ${ic(themeIcon)}
+      </button>
 
-        ${user ? `
-          <span class="usr" aria-label="Authenticated operator: ${user.username} (${user.role})">
-            ${renderIcon('user', 14)}
-            <span>${user.username}</span>
-            <b>${(user.role || 'OPERATOR').toUpperCase()}</b>
-          </span>
-          <button id="btn-logout" class="ib" aria-label="Sign out" title="Sign out">
-            ${renderIcon('log-out', 15)}
-          </button>
-        ` : `
-          <a href="#/login" class="btn btn-primary btn-sm">Sign In</a>
-        `}
-      </div>
+      ${user ? `
+        <span class="usr">
+          ${ic('user')}
+          <span>${user.username}</span>
+          <b>${(user.role || 'OPERATOR').toUpperCase()}</b>
+        </span>
+        <button id="btn-logout" class="ib" aria-label="Sign out">
+          ${ic('out')}
+        </button>
+      ` : `
+        <a href="#/login" class="btn sm p">Sign in</a>
+      `}
     </header>
   `;
 }
@@ -89,41 +80,21 @@ export function bindNavShellEvents() {
   if (themeBtn) {
     themeBtn.addEventListener('click', () => {
       const newTheme = toggleTheme();
-      const logo = document.getElementById('pipra-brand-logo');
-      if (logo) {
-        logo.src = newTheme === 'light' ? '/assets/logo-navy-tagline.png' : '/assets/logo-white-tagline.png';
-      }
       const nextIcon = newTheme === 'dark' ? 'sun' : 'moon';
       const nextLabel = newTheme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
       themeBtn.setAttribute('aria-label', nextLabel);
-      themeBtn.setAttribute('title', nextLabel);
-      themeBtn.innerHTML = renderIcon(nextIcon, 15);
+      themeBtn.innerHTML = ic(nextIcon);
     });
   }
 
   const logoutBtn = document.getElementById('btn-logout');
   if (logoutBtn) {
     logoutBtn.addEventListener('click', async () => {
-      await api.logout();
+      try {
+        await api.logout();
+      } catch (e) {}
       state.set({ user: null });
-      window.location.hash = '#/login';
-    });
-  }
-
-  const mobileToggle = document.getElementById('mobile-nav-toggle');
-  const navMenu = document.getElementById('pipra-main-nav');
-  if (mobileToggle && navMenu) {
-    mobileToggle.addEventListener('click', () => {
-      const isOpen = navMenu.classList.toggle('open');
-      mobileToggle.setAttribute('aria-expanded', String(isOpen));
-    });
-
-    // Close on navigation click on mobile
-    navMenu.querySelectorAll('.pipra-nav-link').forEach(link => {
-      link.addEventListener('click', () => {
-        navMenu.classList.remove('open');
-        mobileToggle.setAttribute('aria-expanded', 'false');
-      });
+      location.hash = '#/login';
     });
   }
 }

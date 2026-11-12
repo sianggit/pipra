@@ -31,6 +31,8 @@
   --neu: #93A1B4;                        /* Status neutral / queued */
   --wm: none;                            /* Wordmark filter (dark = none) */
   --sh: 0 12px 32px -10px rgb(0 0 0 / 45%);
+  --f: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --m: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* ========================================================================
      2. Surface Tokens & Backward Compatibility Aliases
@@ -225,6 +227,8 @@
   --neu: #5E6B80;                        /* Status neutral / queued */
   --wm: invert(1);                       /* Wordmark filter (light = inverted) */
   --sh: 0 12px 32px -10px rgb(15 26 42 / 18%);
+  --f: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --m: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   /* ========================================================================
      2. Surface Tokens & Backward Compatibility Aliases

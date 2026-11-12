@@ -4,17 +4,22 @@
  */
 
 export class DeploymentEventStream {
-  constructor(deploymentId) {
+  constructor(deploymentId, options = {}) {
     this.deploymentId = deploymentId;
     this.eventSource = null;
     this.callbacks = {
-      init: [],
-      stage: [],
-      log: [],
-      probe: [],
-      status: [],
-      finished: [],
+      init: options.onInit ? [options.onInit] : [],
+      stage: options.onStage ? [options.onStage] : [],
+      log: options.onLog ? [options.onLog] : [],
+      probe: options.onProbe ? [options.onProbe] : [],
+      status: options.onStateChange ? [options.onStateChange] : [],
+      finished: options.onFinished ? [options.onFinished] : [],
+      approval_requested: options.onApprovalRequested ? [options.onApprovalRequested] : [],
+      approved: options.onApproved ? [options.onApproved] : [],
     };
+    if (options.onError) {
+      this.onErrorCallback = options.onError;
+    }
     this.reconnectAttempts = 0;
     this.isClosed = false;
   }
@@ -24,38 +29,23 @@ export class DeploymentEventStream {
     const url = `/api/deployments/${this.deploymentId}/events`;
     this.eventSource = new EventSource(url);
 
-    this.eventSource.addEventListener('init', (e) => {
-      this.reconnectAttempts = 0;
-      const data = JSON.parse(e.data);
-      this.callbacks.init.forEach(cb => cb(data));
-    });
+    const eventNames = ['init', 'stage', 'log', 'probe', 'status', 'finished', 'approval_requested', 'approved'];
+    for (const evt of eventNames) {
+      this.eventSource.addEventListener(evt, (e) => {
+        if (evt === 'init') this.reconnectAttempts = 0;
+        try {
+          const data = JSON.parse(e.data);
+          (this.callbacks[evt] || []).forEach(cb => cb(data));
+        } catch (err) {
+          console.error(`[SSE parse error for ${evt}]`, err);
+        }
+      });
+    }
 
-    this.eventSource.addEventListener('stage', (e) => {
-      const data = JSON.parse(e.data);
-      this.callbacks.stage.forEach(cb => cb(data));
-    });
-
-    this.eventSource.addEventListener('log', (e) => {
-      const data = JSON.parse(e.data);
-      this.callbacks.log.forEach(cb => cb(data));
-    });
-
-    this.eventSource.addEventListener('probe', (e) => {
-      const data = JSON.parse(e.data);
-      this.callbacks.probe.forEach(cb => cb(data));
-    });
-
-    this.eventSource.addEventListener('status', (e) => {
-      const data = JSON.parse(e.data);
-      this.callbacks.status.forEach(cb => cb(data));
-    });
-
-    this.eventSource.addEventListener('finished', (e) => {
-      const data = JSON.parse(e.data);
-      this.callbacks.finished.forEach(cb => cb(data));
-    });
-
-    this.eventSource.onerror = () => {
+    this.eventSource.onerror = (err) => {
+      if (this.onErrorCallback) {
+        try { this.onErrorCallback(err); } catch {}
+      }
       if (this.isClosed) return;
       this.eventSource.close();
       const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts++), 10000);

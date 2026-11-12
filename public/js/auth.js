@@ -33,6 +33,10 @@ export function canCancelDeployment() {
   return hasRole(['admin', 'operator']);
 }
 
+export function canApproveDeployment() {
+  return hasRole(['admin', 'operator']);
+}
+
 export function isViewerOnly() {
   const user = getUser();
   return !!user && user.role === 'viewer';

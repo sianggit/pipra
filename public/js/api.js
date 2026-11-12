@@ -97,14 +97,35 @@ class ApiClient {
     return this.request(`/api/deployments/${id}/cancel`, { method: 'POST' });
   }
 
+  async approveDeployment(id, comments = '', allowSelfApproval = false) {
+    return this.request(`/api/deployments/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ comments, allow_self_approval: allowSelfApproval }),
+    });
+  }
+
+  async rejectDeployment(id, reason = '') {
+    return this.request(`/api/deployments/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  }
+
   async getDeploymentLogs(id, stage = null) {
     const query = stage ? `?stage=${stage}` : '';
     return this.request(`/api/deployments/${id}/logs${query}`);
   }
 
+  async verifyDeploymentProvenance(id) {
+    return this.request(`/api/deployments/${id}/provenance/verify`, {
+      method: 'POST',
+    });
+  }
+
   // Applications
-  async getApplications() {
-    return this.request('/api/applications');
+  async getApplications(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return this.request(`/api/applications${query ? '?' + query : ''}`);
   }
 
   async getApplication(id) {
@@ -118,15 +139,65 @@ class ApiClient {
     });
   }
 
+  async updateApplication(id, payload) {
+    return this.request(`/api/applications/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async archiveApplication(id, isArchived = true) {
+    return this.request(`/api/applications/${id}/archive`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_archived: isArchived ? 1 : 0 }),
+    });
+  }
+
+  async deleteApplication(id, confirmSlug) {
+    return this.request(`/api/applications/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ confirm_slug: confirmSlug }),
+    });
+  }
+
   // Environments
-  async getEnvironments() {
-    return this.request('/api/environments');
+  async getEnvironments(appId = null, params = {}) {
+    const queryObj = { ...(params || {}) };
+    if (appId) queryObj.app = appId;
+    const query = new URLSearchParams(queryObj).toString();
+    return this.request(`/api/environments${query ? '?' + query : ''}`);
+  }
+
+  async createEnvironment(payload) {
+    return this.request('/api/environments', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
   }
 
   async updateEnvironment(id, payload) {
     return this.request(`/api/environments/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
+    });
+  }
+
+  async archiveEnvironment(id, isArchived = true) {
+    return this.request(`/api/environments/${id}/archive`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_archived: isArchived ? 1 : 0 }),
+    });
+  }
+
+  async deleteEnvironment(id) {
+    return this.request(`/api/environments/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async testConnection(id) {
+    return this.request(`/api/environments/${id}/test-connection`, {
+      method: 'POST',
     });
   }
 
@@ -140,9 +211,32 @@ class ApiClient {
     return this.request(`/api/audit-logs?limit=${limit}`);
   }
 
-  // Overview Stats
+  // Overview & DORA Analytics Stats
   async getOverviewStats() {
     return this.request('/api/stats/overview');
+  }
+
+  async getDoraMetrics(timeframe = '30d', appId = null) {
+    const params = new URLSearchParams({ timeframe });
+    if (appId) params.append('application_id', appId);
+    return this.request(`/api/stats/dora?${params.toString()}`);
+  }
+
+  getDoraExportUrl(format = 'csv', timeframe = '30d', appId = null) {
+    const params = new URLSearchParams({ format, timeframe });
+    if (appId) params.append('application_id', appId);
+    return `/api/stats/dora/export?${params.toString()}`;
+  }
+
+  // Webhooks & GitOps
+  async getAppWebhooks(appId) {
+    return this.request(`/api/applications/${appId}/webhooks`);
+  }
+
+  async regenerateWebhookSecret(appId) {
+    return this.request(`/api/applications/${appId}/webhooks/regenerate-secret`, {
+      method: 'POST',
+    });
   }
 }
 
