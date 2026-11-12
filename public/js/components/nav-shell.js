@@ -7,7 +7,7 @@ import { ic } from '../icons.js';
 import { state } from '../state.js';
 import { api } from '../api.js';
 import { getTheme, toggleTheme } from '../theme.js';
-import { canDeploy } from '../auth.js';
+import { canDeploy, isAdmin } from '../auth.js';
 
 export function renderNavShell(activeRoute = 'overview') {
   const { user, activeEnvironment, environments = [] } = state.get();
@@ -28,7 +28,7 @@ export function renderNavShell(activeRoute = 'overview') {
     { id: 'applications', label: 'Applications', icon: 'layers', path: '#/applications' },
     { id: 'environments', label: 'Environments', icon: 'server', path: '#/environments' },
     { id: 'infrastructure', label: 'Infrastructure', icon: 'cpu', path: '#/infrastructure' },
-    { id: 'admin', label: 'Audit & admin', icon: 'shield', path: '#/admin' },
+    ...(isAdmin() ? [{ id: 'admin', label: 'Audit & admin', icon: 'shield', path: '#/admin' }] : []),
   ];
 
   return `

@@ -1,23 +1,37 @@
 /**
- * Pipra Administration, Audit & Login Page
- * Aligned with DESIGN.md & Control Plane Redesign Mockup
+ * Pipra Administration, Users (RBAC) & Audit Log Console
+ * Strictly guarded for Administrator accounts.
+ * Aligned with DESIGN.md & Control Plane Redesign Mockup.
  */
 
 import { api } from '../api.js';
 import { renderIcon } from '../icons.js';
 import { state } from '../state.js';
 import { getTheme, toggleTheme } from '../theme.js';
+import { openModal } from '../components/modal.js';
 
 export async function renderAdminPage(container) {
   container.innerHTML = `
     <div style="padding: 48px; text-align: center; color: var(--t2);">
-      <div class="mono">Loading audit trail & platform controls...</div>
+      <div class="mono">Loading administrative control plane...</div>
     </div>
   `;
 
   try {
-    const auditLogs = await api.getAuditLogs(100);
-    let eventFilter = 'all'; // 'all', 'dep', 'login'
+    const [usersList, auditLogs] = await Promise.all([
+      api.getUsers().catch(err => {
+        console.warn('Could not load users:', err);
+        return [];
+      }),
+      api.getAuditLogs(150).catch(err => {
+        console.warn('Could not load audit logs:', err);
+        return [];
+      }),
+    ]);
+
+    let activeTab = 'users'; // 'users' | 'audit'
+    let eventFilter = 'all'; // 'all' | 'dep' | 'login' | 'user'
+    const currentUser = state.get().user || {};
 
     const formatDate = (iso) => {
       if (!iso) return '—';
@@ -26,28 +40,212 @@ export async function renderAdminPage(container) {
     };
 
     function renderView() {
-      const filtered = auditLogs.filter(log => {
-        if (eventFilter === 'login') return (log.action || '').toUpperCase().includes('LOGIN');
-        if (eventFilter === 'dep') return (log.action || '').toUpperCase().includes('DEPLOY');
-        return true;
-      });
-
       container.innerHTML = `
-        <div class="pg">
+        <div class="pg" style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px;">
           <div>
-            <h1>Audit & admin</h1>
-            <p class="sub">Immutable record of consequential actions. Last 100 events retained.</p>
+            <h1>Administration & Access</h1>
+            <p class="sub">Configure operator roles, enforce RBAC boundaries, and inspect compliance audit events.</p>
+          </div>
+          ${activeTab === 'users' ? `
+            <button id="btn-add-user" class="btn p" style="display: flex; align-items: center; gap: 6px;">
+              ${renderIcon('plus', 14)}
+              <span>Add User</span>
+            </button>
+          ` : ''}
+        </div>
+
+        <div class="chips" role="tablist" style="margin-bottom: 20px;">
+          <button type="button" class="chip" id="tab-btn-users" role="tab" aria-selected="${activeTab === 'users'}" aria-pressed="${activeTab === 'users'}">
+            Users &amp; Access (${usersList.length})
+          </button>
+          <button type="button" class="chip" id="tab-btn-audit" role="tab" aria-selected="${activeTab === 'audit'}" aria-pressed="${activeTab === 'audit'}">
+            Audit Trail (${auditLogs.length})
+          </button>
+        </div>
+
+        ${activeTab === 'users' ? renderUsersTabHtml() : renderAuditTabHtml()}
+      `;
+
+      // Bind Tab Switching
+      const tabUsersBtn = container.querySelector('#tab-btn-users');
+      const tabAuditBtn = container.querySelector('#tab-btn-audit');
+      if (tabUsersBtn) {
+        tabUsersBtn.addEventListener('click', () => {
+          activeTab = 'users';
+          renderView();
+        });
+      }
+      if (tabAuditBtn) {
+        tabAuditBtn.addEventListener('click', () => {
+          activeTab = 'audit';
+          renderView();
+        });
+      }
+
+      if (activeTab === 'users') {
+        bindUserActions();
+      } else {
+        bindAuditActions();
+      }
+    }
+
+    function renderUsersTabHtml() {
+      return `
+        <div class="pn">
+          <div class="ph" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <h2 style="font-size: 15px; margin: 0;">Platform User Inventory</h2>
+              <p class="dim" style="font-size: 12px; margin: 2px 0 0;">Authorized operators, admins, and deployment viewers.</p>
+            </div>
+            <span class="dim" style="font-size: 12px;">SQLite scrypt auth · Zero NPM runtime · Strict RBAC</span>
+          </div>
+
+          <div class="tw">
+            <table>
+              <thead>
+                <tr>
+                  <th>Username</th>
+                  <th>Assigned Role</th>
+                  <th>Active Sessions</th>
+                  <th>Created Date</th>
+                  <th style="text-align: right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${usersList.length === 0 ? `
+                  <tr><td colspan="5" class="empty">No users registered in system.</td></tr>
+                ` : usersList.map(u => {
+                  const isCurrent = u.id === currentUser.id || u.username === currentUser.username;
+                  const roleUpper = (u.role || 'viewer').toUpperCase();
+                  let badgeClass = 'neu';
+                  if (u.role === 'admin') badgeClass = 'info';
+                  else if (u.role === 'operator') badgeClass = 'prod';
+
+                  return `
+                    <tr>
+                      <td>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                          <div style="width: 28px; height: 28px; border-radius: 50%; background: var(--bd); display: grid; place-items: center; font-weight: 600; font-size: 12px; color: var(--t1);">
+                            ${(u.username || 'U')[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <span class="mono" style="font-weight: 600; color: var(--t1);">${u.username}</span>
+                            ${isCurrent ? `<span class="dim" style="font-size: 11px; margin-left: 6px;">(You)</span>` : ''}
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span class="b ${badgeClass}">${roleUpper}</span>
+                      </td>
+                      <td class="mono num t2">
+                        ${u.active_sessions > 0 ? `
+                          <span style="color: var(--ok); display: inline-flex; align-items: center; gap: 4px;">
+                            <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ok);"></span>
+                            ${u.active_sessions} active
+                          </span>
+                        ` : `<span class="dim">0 active</span>`}
+                      </td>
+                      <td class="mono num t2">${formatDate(u.created_at)}</td>
+                      <td style="text-align: right;">
+                        <div style="display: inline-flex; gap: 6px;">
+                          <button type="button" class="btn sm s btn-edit-role" data-id="${u.id}" data-name="${u.username}" data-role="${u.role}" title="Change role">
+                            Role
+                          </button>
+                          <button type="button" class="btn sm s btn-reset-pw" data-id="${u.id}" data-name="${u.username}" title="Reset password">
+                            Password
+                          </button>
+                          <button type="button" class="btn sm d btn-delete-user" data-id="${u.id}" data-name="${u.username}" ${isCurrent ? 'disabled title="Cannot delete active session account"' : 'title="Delete user"'}>
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
           </div>
         </div>
 
+        <!-- RBAC Privilege Reference Matrix Card -->
+        <div class="pn" style="margin-top: 24px;">
+          <div class="ph">
+            <h3 style="margin: 0; font-size: 14px;">Role-Based Access Control (RBAC) Specification</h3>
+            <p class="dim" style="font-size: 12px; margin-top: 2px;">Pipra strictly verifies permissions at both the API Gateway and Client Routing boundaries.</p>
+          </div>
+          <div class="tw">
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 40%;">Operational Capability</th>
+                  <th style="width: 20%;">Administrator</th>
+                  <th style="width: 20%;">Operator</th>
+                  <th style="width: 20%;">Viewer (Observer)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><b>Pipeline Telemetry, Live SSE Logs & DORA KPIs</b></td>
+                  <td><span class="b info">ALLOWED</span></td>
+                  <td><span class="b info">ALLOWED</span></td>
+                  <td><span class="b info">ALLOWED</span></td>
+                </tr>
+                <tr>
+                  <td><b>Trigger New Continuous Deployments</b></td>
+                  <td><span class="b info">ALLOWED</span></td>
+                  <td><span class="b info">ALLOWED</span></td>
+                  <td><span class="b neu">RESTRICTED</span></td>
+                </tr>
+                <tr>
+                  <td><b>Approve Promotion Gates, Rollback & Cancel Runs</b></td>
+                  <td><span class="b info">ALLOWED</span></td>
+                  <td><span class="b info">ALLOWED</span></td>
+                  <td><span class="b neu">RESTRICTED</span></td>
+                </tr>
+                <tr>
+                  <td><b>Application & Target Environment Configuration</b></td>
+                  <td><span class="b info">ALLOWED</span></td>
+                  <td><span class="b neu">RESTRICTED</span></td>
+                  <td><span class="b neu">RESTRICTED</span></td>
+                </tr>
+                <tr>
+                  <td><b>SSH Host Credentials & Webhook HMAC Secrets</b></td>
+                  <td><span class="b info">ALLOWED</span></td>
+                  <td><span class="b neu">RESTRICTED</span></td>
+                  <td><span class="b neu">RESTRICTED</span></td>
+                </tr>
+                <tr>
+                  <td><b>User Provisioning, Password Resets & Audit Logs</b></td>
+                  <td><span class="b info">ALLOWED</span></td>
+                  <td><span class="b neu">RESTRICTED</span></td>
+                  <td><span class="b neu">RESTRICTED</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAuditTabHtml() {
+      const filtered = auditLogs.filter(log => {
+        const act = (log.action || '').toUpperCase();
+        if (eventFilter === 'login') return act.includes('LOGIN');
+        if (eventFilter === 'dep') return act.includes('DEPLOY');
+        if (eventFilter === 'user') return act.includes('USER');
+        return true;
+      });
+
+      return `
         <div class="pn">
-          <div class="sr" style="justify-content: space-between; align-items: center;">
+          <div class="sr" style="justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <div class="chips" role="group" aria-label="Filter events">
               <button type="button" class="chip" aria-pressed="${eventFilter === 'all'}" data-filter="all">All events</button>
               <button type="button" class="chip" aria-pressed="${eventFilter === 'dep'}" data-filter="dep">Deployments</button>
+              <button type="button" class="chip" aria-pressed="${eventFilter === 'user'}" data-filter="user">User &amp; RBAC</button>
               <button type="button" class="chip" aria-pressed="${eventFilter === 'login'}" data-filter="login">Sign-ins</button>
             </div>
-            <span class="dim" style="font-size: 12px;">SQLite · SSE live updates · RBAC with secret masking</span>
+            <span class="dim" style="font-size: 12px;">SQLite · SSE live updates · Secret masking</span>
           </div>
 
           <div class="tw">
@@ -70,7 +268,11 @@ export async function renderAdminPage(container) {
                   const act = (log.action || '').toUpperCase();
                   const isCancel = act.includes('CANCEL');
                   const isFail = act.includes('FAIL');
-                  const badgeColor = isCancel ? 'neu' : (isFail ? 'bad' : 'info');
+                  const isUser = act.includes('USER');
+                  let badgeColor = 'info';
+                  if (isCancel) badgeColor = 'neu';
+                  else if (isFail) badgeColor = 'bad';
+                  else if (isUser) badgeColor = 'prod';
 
                   return `
                     <tr>
@@ -86,7 +288,7 @@ export async function renderAdminPage(container) {
                         ` : '—'}
                       </td>
                       <td class="t2">${log.details || '—'}</td>
-                      <td class="mono dim">${log.client_ip || '127.0.0.1'}</td>
+                      <td class="mono dim">${log.ip_address || log.client_ip || '127.0.0.1'}</td>
                     </tr>
                   `;
                 }).join('')}
@@ -95,9 +297,190 @@ export async function renderAdminPage(container) {
           </div>
         </div>
       `;
+    }
 
-      // Bind filter chip events
-      const chipButtons = container.querySelectorAll('.chips button');
+    function bindUserActions() {
+      // Add User Button
+      const addBtn = container.querySelector('#btn-add-user');
+      if (addBtn) {
+        addBtn.addEventListener('click', () => {
+          openModal({
+            title: 'Provision New User Account',
+            bodyHtml: `
+              <form id="form-create-user" style="display: grid; gap: 14px;">
+                <div>
+                  <label for="modal-new-username" style="display: block; font-size: 12px; font-weight: 600; color: var(--t1); margin-bottom: 6px;">Username</label>
+                  <input id="modal-new-username" type="text" class="in" style="width: 100%; box-sizing: border-box;" placeholder="e.g. qa-engineer" required autocomplete="off" />
+                  <span class="dim" style="font-size: 11px;">Alphanumeric, dashes, or dots (3-32 characters).</span>
+                </div>
+                <div>
+                  <label for="modal-new-password" style="display: block; font-size: 12px; font-weight: 600; color: var(--t1); margin-bottom: 6px;">Initial Password</label>
+                  <input id="modal-new-password" type="password" class="in" style="width: 100%; box-sizing: border-box;" placeholder="Minimum 6 characters" required autocomplete="new-password" />
+                </div>
+                <div>
+                  <label for="modal-new-role" style="display: block; font-size: 12px; font-weight: 600; color: var(--t1); margin-bottom: 6px;">Operational Role</label>
+                  <select id="modal-new-role" class="sel" style="width: 100%; box-sizing: border-box;">
+                    <option value="viewer" selected>Viewer — Read-only observation &amp; telemetry monitoring</option>
+                    <option value="operator">Operator — Deploy, cancel, rollback &amp; approve gates</option>
+                    <option value="admin">Administrator — Full control (Apps, Envs, Secrets &amp; Users)</option>
+                  </select>
+                </div>
+              </form>
+            `,
+            confirmText: 'Create Account',
+            confirmClass: 'btn-primary',
+            onConfirm: async () => {
+              const u = document.getElementById('modal-new-username')?.value.trim();
+              const p = document.getElementById('modal-new-password')?.value;
+              const r = document.getElementById('modal-new-role')?.value;
+
+              if (!u || !p) {
+                state.notifyToast('Username and password are required', 'error');
+                return false;
+              }
+
+              try {
+                const res = await api.createUser({ username: u, password: p, role: r });
+                usersList.push(res.user);
+                state.notifyToast(`User "${res.user.username}" created successfully`, 'success');
+                renderView();
+                return true;
+              } catch (err) {
+                state.notifyToast(err.message, 'error');
+                return false;
+              }
+            }
+          });
+        });
+      }
+
+      // Change Role Buttons
+      container.querySelectorAll('.btn-edit-role').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const userId = btn.getAttribute('data-id');
+          const username = btn.getAttribute('data-name');
+          const currentRole = btn.getAttribute('data-role');
+
+          openModal({
+            title: `Modify Role: ${username}`,
+            bodyHtml: `
+              <div style="display: grid; gap: 14px;">
+                <p class="t2" style="font-size: 13px; margin: 0;">
+                  Update the operational authority for account <strong class="mono">${username}</strong>. Active sessions will dynamically adopt the new permission tier.
+                </p>
+                <div>
+                  <label for="modal-edit-role" style="display: block; font-size: 12px; font-weight: 600; color: var(--t1); margin-bottom: 6px;">New Role</label>
+                  <select id="modal-edit-role" class="sel" style="width: 100%; box-sizing: border-box;">
+                    <option value="viewer" ${currentRole === 'viewer' ? 'selected' : ''}>Viewer (Read-only observer)</option>
+                    <option value="operator" ${currentRole === 'operator' ? 'selected' : ''}>Operator (Continuous delivery &amp; release ops)</option>
+                    <option value="admin" ${currentRole === 'admin' ? 'selected' : ''}>Administrator (Full system authority)</option>
+                  </select>
+                </div>
+              </div>
+            `,
+            confirmText: 'Save Role',
+            confirmClass: 'btn-primary',
+            onConfirm: async () => {
+              const newRole = document.getElementById('modal-edit-role')?.value;
+              try {
+                const res = await api.updateUserRole(userId, newRole);
+                const target = usersList.find(x => x.id === userId);
+                if (target) target.role = res.user.role;
+                state.notifyToast(`Updated role of "${username}" to ${newRole.toUpperCase()}`, 'success');
+                renderView();
+                return true;
+              } catch (err) {
+                state.notifyToast(err.message, 'error');
+                return false;
+              }
+            }
+          });
+        });
+      });
+
+      // Reset Password Buttons
+      container.querySelectorAll('.btn-reset-pw').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const userId = btn.getAttribute('data-id');
+          const username = btn.getAttribute('data-name');
+
+          openModal({
+            title: `Reset Password: ${username}`,
+            bodyHtml: `
+              <div style="display: grid; gap: 14px;">
+                <p class="t2" style="font-size: 13px; margin: 0;">
+                  Set a new password for <strong class="mono">${username}</strong>. This will revoke all currently active sessions for this account.
+                </p>
+                <div>
+                  <label for="modal-reset-new-password" style="display: block; font-size: 12px; font-weight: 600; color: var(--t1); margin-bottom: 6px;">New Password</label>
+                  <input id="modal-reset-new-password" type="password" class="in" style="width: 100%; box-sizing: border-box;" placeholder="Minimum 6 characters" required autocomplete="new-password" />
+                </div>
+              </div>
+            `,
+            confirmText: 'Reset Password',
+            confirmClass: 'btn-primary',
+            onConfirm: async () => {
+              const newPass = document.getElementById('modal-reset-new-password')?.value;
+              if (!newPass || newPass.length < 6) {
+                state.notifyToast('Password must be at least 6 characters long', 'error');
+                return false;
+              }
+              try {
+                await api.resetUserPassword(userId, newPass);
+                const target = usersList.find(x => x.id === userId);
+                if (target) target.active_sessions = 0;
+                state.notifyToast(`Password reset for "${username}". Sessions revoked.`, 'success');
+                renderView();
+                return true;
+              } catch (err) {
+                state.notifyToast(err.message, 'error');
+                return false;
+              }
+            }
+          });
+        });
+      });
+
+      // Delete User Buttons
+      container.querySelectorAll('.btn-delete-user').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const userId = btn.getAttribute('data-id');
+          const username = btn.getAttribute('data-name');
+
+          openModal({
+            title: `Delete Account: ${username}`,
+            bodyHtml: `
+              <div style="display: grid; gap: 12px;">
+                <p class="t2" style="font-size: 13px; margin: 0;">
+                  Are you sure you want to permanently delete user <strong class="mono">${username}</strong>?
+                </p>
+                <div style="padding: 10px 12px; background: color-mix(in srgb, var(--bad) 10%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent); border-radius: 6px; font-size: 12px; color: var(--bad);">
+                  This action is irreversible. All active tokens and sessions will be permanently revoked.
+                </div>
+              </div>
+            `,
+            confirmText: 'Delete Account',
+            confirmClass: 'btn-danger',
+            onConfirm: async () => {
+              try {
+                await api.deleteUser(userId);
+                const idx = usersList.findIndex(x => x.id === userId);
+                if (idx !== -1) usersList.splice(idx, 1);
+                state.notifyToast(`User "${username}" permanently deleted`, 'success');
+                renderView();
+                return true;
+              } catch (err) {
+                state.notifyToast(err.message, 'error');
+                return false;
+              }
+            }
+          });
+        });
+      });
+    }
+
+    function bindAuditActions() {
+      const chipButtons = container.querySelectorAll('.chips button[data-filter]');
       chipButtons.forEach(btn => {
         btn.addEventListener('click', () => {
           eventFilter = btn.getAttribute('data-filter');
@@ -110,7 +493,7 @@ export async function renderAdminPage(container) {
   } catch (err) {
     container.innerHTML = `
       <div class="pn" style="margin-top: 24px; border-color: var(--bad);">
-        <div class="ph"><h2 style="color: var(--bad);">Error loading audit logs</h2></div>
+        <div class="ph"><h2 style="color: var(--bad);">Error loading administration console</h2></div>
         <div class="pb"><p class="t2">${err.message}</p></div>
       </div>
     `;

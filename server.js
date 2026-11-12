@@ -22,6 +22,7 @@ const { handleEnvRoutes } = require('./src/routes/env-routes');
 const { handleDeploymentRoutes } = require('./src/routes/deployment-routes');
 const { handleAgentRoutes } = require('./src/routes/agent-routes');
 const { handleAuditRoutes } = require('./src/routes/audit-routes');
+const { handleUserRoutes } = require('./src/routes/user-routes');
 const { handleStatsRoutes } = require('./src/routes/stats-routes');
 const { handleWebhookRoutes } = require('./src/routes/webhook-routes');
 
@@ -117,6 +118,7 @@ const server = http.createServer(async (req, res) => {
       if (handleEnvRoutes(req, res, pathname, query, body, user)) return;
       if (handleDeploymentRoutes(req, res, pathname, query, body, user)) return;
       if (handleAgentRoutes(req, res, pathname, query, body, user)) return;
+      if (handleUserRoutes(req, res, pathname, query, body, user)) return;
       if (handleAuditRoutes(req, res, pathname, query, body, user)) return;
       if (handleStatsRoutes(req, res, pathname, query, body, user)) return;
 

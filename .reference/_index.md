@@ -106,6 +106,16 @@ Pipra incorporates the full Anti-Slop suite. AI coding assistants operating on t
 
 ## Changelog
 
+### [v1.5.0] - 2026-11-12
+- **User & Role Management (Basic RBAC) & Read-Only Viewer (Observer) Persona (PIPRA-601..604)**:
+  - **Auth & Session Service (`src/auth/auth-service.js`)**: Implemented full User CRUD (`listUsers`, `createUser`, `updateUserRole`, `resetUserPassword`, `deleteUser`) with scrypt password hashing, parameter allowlisting, dynamic session role synchronization in `sessions` table, and forced session invalidation on password reset.
+  - **Security Boundaries & Safety Guards**: Implemented self-deletion lockout (active admin cannot delete their own account) and last-admin protection (system prevents deleting or demoting the final administrator).
+  - **Control Plane API Routes (`src/routes/user-routes.js`, `server.js`)**: Added `/api/users` REST endpoints (`GET`, `POST`, `PATCH /role`, `PATCH /password`, `DELETE`) strictly guarded by `admin` role with consequential compliance logging into `audit_logs` table (`USER_CREATED`, `USER_ROLE_UPDATED`, `USER_PASSWORD_RESET`, `USER_DELETED`).
+  - **Audit Route Hardening (`src/routes/audit-routes.js`)**: Guarded `GET /api/audit-logs` to restrict access strictly to `admin` accounts.
+  - **Admin UI Console Overhaul (`public/js/pages/admin-page.js`)**: Transformed `#/admin` into a segmented dual-tab interface (`Users & Access` and `Audit Trail`). Added user inventory table with avatars, role badges, active session counts, and accessible modal dialogs for provisioning accounts, role editing, password resets, and deletions. Embedded comprehensive RBAC capability reference matrix.
+  - **Read-Only Viewer (Observer) Experience (`public/js/auth.js`, `public/js/components/nav-shell.js`, `public/js/router.js`)**: Added `isAdmin()` and `canManageUsers()` helpers. Hidden administrative links from primary navigation for non-admins, guarded `#/admin` with accessible access-restriction cards, and suppressed mutation controls across app and deployment pages while preserving live monitoring, log streaming (SSE), SLSA provenance verification, and DORA analytics.
+  - **Automated Test Coverage**: Added `test/unit/user-management.test.js` and `test/integration/user-rbac-routes.test.js`, expanding automated test suite to 95 passing tests with 0 failures.
+
 ### [v1.2.1] - 2026-10-31
 - **Remote SSH Authentication, Dynamic Branch Policy & Deployment Contract Normalization (PIPRA-BUG-501, 502 & 503)**:
   - **Vaulted SSH Password & Key Execution (`src/engine/execution-driver.js`)**: Built unified `resolveSshInvocation(env, command)` detecting `plink.exe` (Windows) and `sshpass` (Linux) for `SSH_PASSWORD`, and generating ephemeral identity files with strict `0600` permissions and `finally` cleanup for `SSH_KEY`. Eliminated hardcoded OpenSSH `-o BatchMode=yes`.

@@ -15,7 +15,7 @@ import { showPageTransition, hidePageTransition } from './components/loading-scr
 import { state } from './state.js';
 import { api } from './api.js';
 import { renderIcon } from './icons.js';
-import { canDeploy } from './auth.js';
+import { canDeploy, isAdmin } from './auth.js';
 
 export class Router {
   constructor(appContainer) {
@@ -115,7 +115,25 @@ export class Router {
       } else if (pathPart === '/infrastructure') {
         await renderInfraPage(mainContent);
       } else if (pathPart === '/admin') {
-        await renderAdminPage(mainContent);
+        if (!isAdmin()) {
+          state.notifyToast('Administrative console requires Administrator role', 'warning');
+          mainContent.innerHTML = `
+            <div class="card" style="border-left: 3px solid var(--bad); max-width: 680px; margin: var(--space-8) auto;">
+              <div class="card-body" style="padding: var(--space-6); text-align: center;">
+                <div style="color: var(--bad); margin-bottom: var(--space-3);">
+                  ${renderIcon('shield', 32)}
+                </div>
+                <h2 style="margin-bottom: var(--space-2);">Access Restricted</h2>
+                <p style="color: var(--color-text-secondary); margin-bottom: var(--space-5); line-height: 1.6;">
+                  User management and administrative controls are strictly restricted to <strong>Administrator</strong> accounts. Your current role is <strong>${state.get().user?.role || 'viewer'}</strong>.
+                </p>
+                <a href="#/overview" class="btn btn-primary">Return to Overview</a>
+              </div>
+            </div>
+          `;
+        } else {
+          await renderAdminPage(mainContent);
+        }
       } else {
         mainContent.innerHTML = `
           <div class="card" style="text-align: center; padding: 48px;">

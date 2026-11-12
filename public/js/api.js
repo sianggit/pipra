@@ -76,6 +76,38 @@ class ApiClient {
     }
   }
 
+  // Users & RBAC
+  async getUsers() {
+    return this.request('/api/users');
+  }
+
+  async createUser(payload) {
+    return this.request('/api/users', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateUserRole(id, role) {
+    return this.request(`/api/users/${id}/role`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  async resetUserPassword(id, password) {
+    return this.request(`/api/users/${id}/password`, {
+      method: 'PATCH',
+      body: JSON.stringify({ password }),
+    });
+  }
+
+  async deleteUser(id) {
+    return this.request(`/api/users/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Deployments
   async getDeployments(params = {}) {
     const query = new URLSearchParams(params).toString();

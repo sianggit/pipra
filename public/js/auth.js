@@ -42,3 +42,11 @@ export function isViewerOnly() {
   return !!user && user.role === 'viewer';
 }
 
+export function isAdmin() {
+  return hasRole(['admin']);
+}
+
+export function canManageUsers() {
+  return hasRole(['admin']);
+}
+
