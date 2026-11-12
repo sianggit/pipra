@@ -24,6 +24,11 @@ function createMockRes() {
   };
 }
 
+test.beforeEach(() => {
+  const db = getDatabase();
+  seedDatabase(db);
+});
+
 test('EnvRoutes: List and detail endpoints sanitize credentials', () => {
   const db = getDatabase();
   seedDatabase(db);
