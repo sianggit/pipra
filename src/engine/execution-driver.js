@@ -270,6 +270,11 @@ class ExecutionDriver {
         onLog('info', `Switched to branch '${branch}'`);
       }
     } catch (e) {
+      if (e.message && (e.message.includes('Permission denied') || e.message.includes('permission denied'))) {
+        const currentUser = process.env.USER || 'devel';
+        onLog('error', `Workspace permission error: User '${currentUser}' cannot write to ${appDir}/.git. Remediation: sudo chown -R ${currentUser}:${currentUser} ${appDir}`);
+        throw new Error(`Git workspace permission denied in ${appDir}: ${e.message}`);
+      }
       onLog('warn', `Git sync note: ${e.message}`);
       const crypto = require('node:crypto');
       commitSha = crypto.createHash('sha1').update(`${branch}-${Date.now()}`).digest('hex');
