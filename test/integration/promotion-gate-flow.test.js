@@ -50,7 +50,17 @@ function createMockReqRes({ method, pathname, query = {}, headers = {}, body = n
 test('Integration: Two-Person Rule blocks self-approval and permits peer approval', async () => {
   const db = getDatabase();
   const testDepId = `test-dep-promote-${Date.now()}`;
-  const app = db.prepare('SELECT id, name FROM applications LIMIT 1').get() || { id: 'app-asdp-dims-fe', name: 'asdp-dims-fe' };
+  let app = db.prepare('SELECT id, name FROM applications LIMIT 1').get();
+  if (!app) {
+    app = { id: 'app-test-promo', name: 'test-promo-app' };
+    db.prepare(`
+      INSERT OR IGNORE INTO applications (
+        id, name, display_name, repo_url, app_dir, default_branch,
+        dockerfile, image_name, host_port, staging_port, container_port,
+        healthcheck_path, created_at, updated_at
+      ) VALUES (?, ?, 'Promo App', '/tmp/repo', '/tmp/app', 'main', 'Dockerfile', 'img:latest', 8080, 8081, 3000, '/', datetime('now'), datetime('now'))
+    `).run(app.id, app.name);
+  }
 
   // Seed deployment in WAITING_FOR_APPROVAL
   db.prepare(`
@@ -159,7 +169,17 @@ test('Integration: Two-Person Rule blocks self-approval and permits peer approva
 test('Integration: Operator can reject promotion gate to abort deployment safely', async () => {
   const db = getDatabase();
   const testDepId = `test-dep-reject-${Date.now()}`;
-  const app = db.prepare('SELECT id, name FROM applications LIMIT 1').get() || { id: 'app-asdp-dims-fe', name: 'asdp-dims-fe' };
+  let app = db.prepare('SELECT id, name FROM applications LIMIT 1').get();
+  if (!app) {
+    app = { id: 'app-test-promo', name: 'test-promo-app' };
+    db.prepare(`
+      INSERT OR IGNORE INTO applications (
+        id, name, display_name, repo_url, app_dir, default_branch,
+        dockerfile, image_name, host_port, staging_port, container_port,
+        healthcheck_path, created_at, updated_at
+      ) VALUES (?, ?, 'Promo App', '/tmp/repo', '/tmp/app', 'main', 'Dockerfile', 'img:latest', 8080, 8081, 3000, '/', datetime('now'), datetime('now'))
+    `).run(app.id, app.name);
+  }
 
   // Seed deployment in WAITING_FOR_APPROVAL
   db.prepare(`

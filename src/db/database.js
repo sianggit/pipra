@@ -23,6 +23,12 @@ function getDatabase(customPath = null) {
 
   initSchema(db);
 
+  // Auto-seed security baseline & default accounts on first database creation
+  try {
+    const { seedCoreSystem } = require('./seed');
+    seedCoreSystem(db);
+  } catch {}
+
   if (!customPath) {
     dbInstance = db;
   }
