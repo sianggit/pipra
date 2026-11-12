@@ -384,7 +384,7 @@ class DeploymentRunner {
           url: stagingUrl,
           maxRetries: healthMaxRetries,
           intervalSec: healthIntervalSec,
-          isSimulated: executionDriver.isSimulated() && !isRemote,
+          isSimulated: options.simulateStagingHealth || (executionDriver.isSimulated() && !isRemote),
           simulateFailure: options.simulateStagingFailure || false,
           onAttempt: (probe) => {
             logStream.emitProbe(deploymentId, 6, probe, db);
@@ -530,7 +530,7 @@ class DeploymentRunner {
           url: prodUrl,
           maxRetries: 5,
           intervalSec: 2,
-          isSimulated: executionDriver.isSimulated() && !isRemote,
+          isSimulated: options.simulateStagingHealth || (executionDriver.isSimulated() && !isRemote),
           simulateFailure: options.simulateProdFailure || false,
           onAttempt: (probe) => {
             logStream.emitProbe(deploymentId, 8, probe, db);

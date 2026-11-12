@@ -104,6 +104,7 @@ post_cutover:
     await deploymentRunner.startDeployment(deploymentId, {
       skipPull: true,
       requiresApproval: false,
+      simulateStagingHealth: true,
     });
 
     // Poll until deployment reaches a terminal status or timeout
@@ -162,6 +163,7 @@ preflight:
     await deploymentRunner.startDeployment(deploymentId, {
       skipPull: true,
       requiresApproval: false,
+      simulateStagingHealth: true,
     });
 
     const deadline = Date.now() + 15000;
