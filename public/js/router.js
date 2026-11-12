@@ -11,6 +11,7 @@ import { renderDeploymentDetailPage } from './pages/deployment-detail.js';
 import { renderHistoryPage } from './pages/history-page.js';
 import { renderInfraPage } from './pages/infra-page.js';
 import { renderAdminPage, renderLoginPage } from './pages/admin-page.js';
+import { showPageTransition, hidePageTransition } from './components/loading-screen.js';
 import { state } from './state.js';
 import { api } from './api.js';
 import { renderIcon } from './icons.js';
@@ -19,6 +20,7 @@ import { canDeploy } from './auth.js';
 export class Router {
   constructor(appContainer) {
     this.appContainer = appContainer;
+    this.isFirstRoute = true;
   }
 
   init() {
@@ -27,6 +29,13 @@ export class Router {
   }
 
   async handleRoute() {
+    const isSwitch = !this.isFirstRoute;
+    this.isFirstRoute = false;
+
+    if (isSwitch) {
+      showPageTransition('Loading view...');
+    }
+
     const hash = window.location.hash.slice(1) || '/overview';
     const [pathPart, queryPart] = hash.split('?');
     const query = Object.fromEntries(new URLSearchParams(queryPart || '').entries());
@@ -38,6 +47,7 @@ export class Router {
         const authData = await api.me();
         state.set({ user: authData.user });
       } catch {
+        if (isSwitch) hidePageTransition();
         window.location.hash = '#/login';
         return;
       }
@@ -46,6 +56,7 @@ export class Router {
     if (pathPart === '/login') {
       this.appContainer.innerHTML = `<main id="main-content"></main>`;
       renderLoginPage(document.getElementById('main-content'));
+      if (isSwitch) hidePageTransition();
       return;
     }
 
@@ -69,49 +80,55 @@ export class Router {
     const mainContent = document.getElementById('main-content');
 
     // Route dispatch
-    if (pathPart === '/' || pathPart === '/overview') {
-      renderOverviewPage(mainContent);
-    } else if (pathPart === '/applications') {
-      renderAppsPage(mainContent);
-    } else if (pathPart === '/environments') {
-      renderEnvsPage(mainContent);
-    } else if (pathPart === '/deploy') {
-      if (!canDeploy()) {
-        state.notifyToast('Deployment access requires Operator or Admin role', 'warning');
-        mainContent.innerHTML = `
-          <div class="card" style="border-left: 3px solid var(--color-status-warning); max-width: 680px; margin: var(--space-8) auto;">
-            <div class="card-body" style="padding: var(--space-6); text-align: center;">
-              <div style="color: var(--color-status-warning); margin-bottom: var(--space-3);">
-                ${renderIcon('shield', 32)}
+    try {
+      if (pathPart === '/' || pathPart === '/overview') {
+        await renderOverviewPage(mainContent);
+      } else if (pathPart === '/applications') {
+        await renderAppsPage(mainContent);
+      } else if (pathPart === '/environments') {
+        await renderEnvsPage(mainContent);
+      } else if (pathPart === '/deploy') {
+        if (!canDeploy()) {
+          state.notifyToast('Deployment access requires Operator or Admin role', 'warning');
+          mainContent.innerHTML = `
+            <div class="card" style="border-left: 3px solid var(--color-status-warning); max-width: 680px; margin: var(--space-8) auto;">
+              <div class="card-body" style="padding: var(--space-6); text-align: center;">
+                <div style="color: var(--color-status-warning); margin-bottom: var(--space-3);">
+                  ${renderIcon('shield', 32)}
+                </div>
+                <h2 style="margin-bottom: var(--space-2);">Access Restricted</h2>
+                <p style="color: var(--color-text-secondary); margin-bottom: var(--space-5); line-height: 1.6;">
+                  Your current account role (<strong>${state.get().user?.role || 'viewer'}</strong>) is granted read-only observation permissions. Triggering pipeline deployments requires <strong>Operator</strong> or <strong>Admin</strong> privileges.
+                </p>
+                <a href="#/overview" class="btn btn-primary">Return to Overview</a>
               </div>
-              <h2 style="margin-bottom: var(--space-2);">Access Restricted</h2>
-              <p style="color: var(--color-text-secondary); margin-bottom: var(--space-5); line-height: 1.6;">
-                Your current account role (<strong>${state.get().user?.role || 'viewer'}</strong>) is granted read-only observation permissions. Triggering pipeline deployments requires <strong>Operator</strong> or <strong>Admin</strong> privileges.
-              </p>
-              <a href="#/overview" class="btn btn-primary">Return to Overview</a>
             </div>
+          `;
+        } else {
+          await renderWizardPage(mainContent, query);
+        }
+      } else if (pathPart.startsWith('/deployments/')) {
+        const deploymentId = pathPart.replace('/deployments/', '');
+        await renderDeploymentDetailPage(mainContent, deploymentId);
+      } else if (pathPart === '/history') {
+        await renderHistoryPage(mainContent);
+      } else if (pathPart === '/infrastructure') {
+        await renderInfraPage(mainContent);
+      } else if (pathPart === '/admin') {
+        await renderAdminPage(mainContent);
+      } else {
+        mainContent.innerHTML = `
+          <div class="card" style="text-align: center; padding: 48px;">
+            <h2>Page Not Found</h2>
+            <p style="color: var(--color-text-secondary); margin: 12px 0 24px;">The requested operational route '${pathPart}' does not exist.</p>
+            <a href="#/overview" class="btn btn-primary">Return to Overview</a>
           </div>
         `;
-      } else {
-        renderWizardPage(mainContent, query);
       }
-    } else if (pathPart.startsWith('/deployments/')) {
-      const deploymentId = pathPart.replace('/deployments/', '');
-      renderDeploymentDetailPage(mainContent, deploymentId);
-    } else if (pathPart === '/history') {
-      renderHistoryPage(mainContent);
-    } else if (pathPart === '/infrastructure') {
-      renderInfraPage(mainContent);
-    } else if (pathPart === '/admin') {
-      renderAdminPage(mainContent);
-    } else {
-      mainContent.innerHTML = `
-        <div class="card" style="text-align: center; padding: 48px;">
-          <h2>Page Not Found</h2>
-          <p style="color: var(--color-text-secondary); margin: 12px 0 24px;">The requested operational route '${pathPart}' does not exist.</p>
-          <a href="#/overview" class="btn btn-primary">Return to Overview</a>
-        </div>
-      `;
+    } finally {
+      if (isSwitch) {
+        setTimeout(() => hidePageTransition(), 140);
+      }
     }
   }
 }

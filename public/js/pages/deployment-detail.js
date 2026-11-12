@@ -10,16 +10,23 @@ import { renderIcon } from '../icons.js';
 import { renderStatusBadge } from '../components/health-badge.js';
 import { renderPipelineTimeline, bindTimelineEvents } from '../components/pipeline-timeline.js';
 import { renderLogViewer, updateLogLines } from '../components/log-viewer.js';
+import { mountDeploymentHero, updateDeploymentHeroTelemetry, destroyDeploymentHero } from '../components/deployment-hero.js';
 import { DeploymentEventStream } from '../sse.js';
 import { canDeploy, canCancelDeployment } from '../auth.js';
 
 let activeStream = null;
+let pollingIntervalId = null;
 
 export async function renderDeploymentDetailPage(container, deploymentId) {
   if (activeStream) {
     activeStream.disconnect();
     activeStream = null;
   }
+  if (pollingIntervalId) {
+    clearInterval(pollingIntervalId);
+    pollingIntervalId = null;
+  }
+  destroyDeploymentHero();
 
   container.innerHTML = `
     <div style="padding: 48px; text-align: center; color: var(--t2);">
@@ -97,6 +104,9 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
             ` : ''}
           </div>
         </div>
+
+        <!-- 3D Active Deployment Hero Mount -->
+        <div id="deployment-hero-mount"></div>
 
         <!-- 10-Stage Pipeline Lifecycle Track -->
         <div id="pipeline-mount">
@@ -447,9 +457,20 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
           if (confirm('Are you sure you want to cancel this active deployment pipeline?')) {
             await api.cancelDeployment(deployment.id);
             deployment.status = 'CANCELLED';
+            if (pollingIntervalId) {
+              clearInterval(pollingIntervalId);
+              pollingIntervalId = null;
+            }
+            destroyDeploymentHero();
             renderView();
           }
         });
+      }
+
+      // Mount 3D deployment hero HUD
+      const heroMount = document.getElementById('deployment-hero-mount');
+      if (heroMount) {
+        mountDeploymentHero(heroMount, deployment);
       }
     }
 
@@ -461,7 +482,7 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
       activeStream = new DeploymentEventStream(deploymentId, {
         onLog: (logEvent) => {
           currentLogs.push({
-            stage_number: logEvent.stage_number || deployment.current_stage || 1,
+            stage_number: logEvent.stageNumber || logEvent.stage_number || deployment.current_stage || 1,
             level: logEvent.level || 'INFO',
             message: logEvent.message,
             timestamp: logEvent.timestamp || new Date().toISOString()
@@ -469,9 +490,43 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
           const streamContent = document.getElementById('log-stream-content');
           updateLogLines(streamContent, currentLogs, selectedStageFilter);
         },
+        onStage: (stageEvent) => {
+          if (!deployment.stages) deployment.stages = [];
+          const sNum = stageEvent.stageNumber || stageEvent.stage_number;
+          const existing = deployment.stages.find(s => s.stage_number === sNum);
+          if (existing) {
+            existing.status = stageEvent.status;
+            if (stageEvent.durationMs != null) existing.duration_ms = stageEvent.durationMs;
+          } else {
+            deployment.stages.push({
+              stage_number: sNum,
+              stage_name: stageEvent.stageName || `Stage ${sNum}`,
+              status: stageEvent.status,
+              duration_ms: stageEvent.durationMs || 0
+            });
+          }
+          if (stageEvent.status === 'RUNNING') {
+            deployment.current_stage = sNum;
+          }
+
+          // Instantly re-render the 10-stage timeline track
+          const pipelineMount = document.getElementById('pipeline-mount');
+          if (pipelineMount) {
+            pipelineMount.innerHTML = renderPipelineTimeline(deployment.stages || [], selectedStageFilter);
+            bindTimelineEvents(pipelineMount, (stg) => {
+              selectedStageFilter = (selectedStageFilter === stg) ? null : stg;
+              renderView();
+            });
+          }
+
+          // Update the 3D execution hero telemetry
+          updateDeploymentHeroTelemetry(deployment);
+        },
         onStateChange: (stateEvent) => {
           deployment.status = stateEvent.status;
-          if (stateEvent.current_stage) deployment.current_stage = stateEvent.current_stage;
+          if (stateEvent.current_stage || stateEvent.currentStage) {
+            deployment.current_stage = stateEvent.current_stage || stateEvent.currentStage;
+          }
           if (stateEvent.stages) deployment.stages = stateEvent.stages;
           renderView();
         },
@@ -485,8 +540,51 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
         }
       });
       activeStream.connect();
+
+      // Dual-transport polling fallback (2.5s) to guarantee stage sync under any proxy/network conditions
+      if (!pollingIntervalId) {
+        pollingIntervalId = setInterval(async () => {
+          try {
+            const fresh = await api.getDeployment(deploymentId);
+            if (fresh) {
+              deployment.status = fresh.status;
+              deployment.current_stage = fresh.current_stage;
+              deployment.stages = fresh.stages || deployment.stages;
+              deployment.duration_ms = fresh.duration_ms;
+
+              // Reconcile timeline track
+              const pipelineMount = document.getElementById('pipeline-mount');
+              if (pipelineMount) {
+                pipelineMount.innerHTML = renderPipelineTimeline(deployment.stages || [], selectedStageFilter);
+                bindTimelineEvents(pipelineMount, (stg) => {
+                  selectedStageFilter = (selectedStageFilter === stg) ? null : stg;
+                  renderView();
+                });
+              }
+
+              updateDeploymentHeroTelemetry(deployment);
+
+              const nowTerminal = ['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'ROLLBACK_FAILED'].includes(deployment.status);
+              if (nowTerminal) {
+                if (pollingIntervalId) {
+                  clearInterval(pollingIntervalId);
+                  pollingIntervalId = null;
+                }
+                renderView();
+              }
+            }
+          } catch (e) {
+            // silent catch during background reconciliation
+          }
+        }, 2500);
+      }
     }
   } catch (err) {
+    if (pollingIntervalId) {
+      clearInterval(pollingIntervalId);
+      pollingIntervalId = null;
+    }
+    destroyDeploymentHero();
     container.innerHTML = `
       <div class="pn" style="margin-top: 24px; border-color: var(--bad);">
         <div class="ph"><h2 style="color: var(--bad);">Failed to load deployment</h2></div>

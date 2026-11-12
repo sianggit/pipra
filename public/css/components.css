@@ -573,14 +573,35 @@ dl > :nth-last-child(-n+2) {
   opacity: 0.85;
 }
 
+.log-panel-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 210px);
+  min-height: 560px;
+}
+
+.log-panel-container .ph {
+  flex-shrink: 0;
+}
+
 .log {
   background: var(--in);
   font-family: var(--m);
   font-size: 12px;
   line-height: 20px;
-  max-height: 380px;
-  overflow: auto;
+  flex: 1 1 auto;
+  height: calc(100vh - 270px);
+  min-height: 500px;
+  max-height: calc(100vh - 210px);
+  overflow-y: auto;
+  overflow-x: auto;
   padding: 8px 0;
+  scroll-behavior: smooth;
+}
+
+.log-panel-container .log {
+  height: auto;
+  max-height: none;
 }
 
 .log div {

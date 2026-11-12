@@ -1,14 +1,254 @@
 /**
- * Pipra 3D Animated Loading Screen Component
+ * Pipra 3D Animated Loading Screen & Page Transition Engine
  * Real extruded geometry wing flapping with Three.js
  */
 
 import { D } from './loading-data.js';
 
-let animFrameId = null;
+let fullScreenBirdScene = null;
 let msgIntervalId = null;
-let resizeObserver = null;
-let pointerListener = null;
+
+/**
+ * Reusable 3D Pipra Bird scene factory
+ */
+export function createBirdScene(canvas, options = {}) {
+  if (!canvas || typeof window.THREE === 'undefined') return null;
+  const THREE = window.THREE;
+  const scale = options.scale || 0.0108;
+  const showRing = options.showRing !== false;
+  const enablePointer = options.enablePointer !== false;
+  const shadowEl = options.shadowEl || null;
+
+  const R = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
+  R.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  if (THREE.sRGBEncoding) R.outputEncoding = THREE.sRGBEncoding;
+
+  const S = new THREE.Scene();
+  const C = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+  C.position.set(0, 0.2, options.cameraZ || 25);
+
+  S.add(new THREE.HemisphereLight(0xdbe8ff, 0x1b1f66, 0.95));
+  const L = new THREE.DirectionalLight(0xffffff, 1);
+  L.position.set(-4, 7, 9);
+  S.add(L);
+
+  const r1 = new THREE.PointLight(0x6EA8FE, 2.2, 40);
+  const r2 = new THREE.PointLight(0x8B5CF6, 2, 40);
+  S.add(r1, r2);
+
+  const tex = new THREE.TextureLoader().load(D.tex);
+  if (THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+  if (R.capabilities && R.capabilities.getMaxAnisotropy) {
+    tex.anisotropy = R.capabilities.getMaxAnisotropy();
+  }
+
+  const BX = 145, BY = 130, BS = 960, CX = 626, CY = 610;
+  const AX = new THREE.Vector3(0.68, -0.733, 0).normalize();
+  const cap = new THREE.MeshStandardMaterial({
+    map: tex,
+    emissiveMap: tex,
+    emissive: 0xffffff,
+    emissiveIntensity: 0.55,
+    roughness: 0.4,
+    metalness: 0.1,
+  });
+
+  const bird = new THREE.Group();
+  const rig = new THREE.Group();
+  rig.position.set(-CX, CY, 0);
+  bird.add(rig);
+  bird.scale.setScalar(scale);
+  S.add(bird);
+
+  const cfg = {
+    upper: { p: [845, 665], z: 16, a: 0.62, ph: 0, bias: 0.12 },
+    mid: { p: [792, 728], z: 2, a: 0.55, ph: 0.5, bias: 0.08 },
+    lower: { p: [792, 728], z: -12, a: 0.46, ph: 1, bias: 0.04 },
+    head: { p: [800, 640], z: 6 },
+  };
+
+  const P = {};
+  const geometries = [];
+  const materials = [cap];
+
+  D.parts.forEach(pt => {
+    const c = cfg[pt.n];
+    const sh = new THREE.Shape(pt.pts.map(q => new THREE.Vector2(q[0], -q[1])));
+    const dep = pt.n === 'head' ? 24 : 18;
+    const g = new THREE.ExtrudeGeometry(sh, {
+      depth: dep,
+      bevelEnabled: true,
+      bevelThickness: 4,
+      bevelSize: 2,
+      bevelSegments: 2,
+      curveSegments: 1,
+    });
+    geometries.push(g);
+    const ps = g.attributes.position;
+    const uv = g.attributes.uv;
+    for (let i = 0; i < ps.count; i++) {
+      uv.setXY(i, (ps.getX(i) - BX) / BS, 1 - (-ps.getY(i) - BY) / BS);
+    }
+    g.translate(-c.p[0], c.p[1], -dep / 2);
+    const side = new THREE.MeshStandardMaterial({
+      color: pt.col,
+      emissive: pt.col,
+      emissiveIntensity: 0.3,
+      roughness: 0.5,
+      metalness: 0.15,
+    });
+    materials.push(side);
+    const m = new THREE.Mesh(g, [cap, side]);
+    const piv = new THREE.Group();
+    piv.position.set(c.p[0], -c.p[1], c.z);
+    piv.add(m);
+    rig.add(piv);
+    P[pt.n] = { piv, g, base: ps.array.slice(), c };
+  });
+
+  let ring = null;
+  let dot = null;
+  if (showRing) {
+    ring = new THREE.Mesh(
+      new THREE.TorusGeometry(5.6, 0.012, 8, 160),
+      new THREE.MeshBasicMaterial({ color: 0x6EA8FE, transparent: true, opacity: 0.35 })
+    );
+    ring.rotation.x = 1.25;
+    S.add(ring);
+
+    dot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.07, 16, 16),
+      new THREE.MeshBasicMaterial({ color: 0x9BC5FF })
+    );
+    S.add(dot);
+  }
+
+  function size() {
+    const parent = canvas.parentElement;
+    if (!parent) return;
+    const w = parent.clientWidth || canvas.clientWidth || 300;
+    const h = parent.clientHeight || canvas.clientHeight || 200;
+    if (w === 0 || h === 0) return;
+    R.setSize(w, h, false);
+    C.aspect = w / h;
+    C.position.z = (w / h < 1.2) ? (options.cameraZ || 25) * 1.2 : (options.cameraZ || 25);
+    C.updateProjectionMatrix();
+  }
+
+  let resizeObserver = null;
+  if (window.ResizeObserver && canvas.parentElement) {
+    resizeObserver = new ResizeObserver(size);
+    resizeObserver.observe(canvas.parentElement);
+  }
+  size();
+
+  let px = 0, py = 0, tx = 0, ty = 0;
+  let pointerListener = null;
+  if (enablePointer) {
+    pointerListener = (e) => {
+      tx = (e.clientX / window.innerWidth - 0.5) * 2;
+      ty = (e.clientY / window.innerHeight - 0.5) * 2;
+    };
+    window.addEventListener('pointermove', pointerListener);
+  }
+
+  const W = 2 * Math.PI / 1.35;
+
+  function pose(t) {
+    const w = W * t;
+    ['upper', 'mid', 'lower'].forEach(k => {
+      const o = P[k];
+      if (!o) return;
+      const c = o.c;
+      const a = c.bias + c.a * (Math.sin(w - c.ph) + 0.22 * Math.sin(2 * w - 2 * c.ph + 0.9));
+      o.piv.quaternion.setFromAxisAngle(AX, a);
+      const ps = o.g.attributes.position;
+      const b = o.base;
+      for (let i = 0; i < ps.count; i++) {
+        const x = b[i * 3];
+        const y = b[i * 3 + 1];
+        const r = Math.abs(x * AX.y - y * AX.x);
+        const u = r * 0.012;
+        ps.array[i * 3 + 2] = b[i * 3 + 2] + 1.1 * u * u * Math.sin(w - c.ph - r * 0.004);
+      }
+      ps.needsUpdate = true;
+    });
+
+    if (P.head && P.head.piv) {
+      const h = P.head.piv;
+      h.rotation.z = 0.05 * Math.sin(w - 1.1);
+      h.rotation.y = 0.12 * Math.sin(w * 0.5);
+      h.position.y = -640 + 4 * Math.sin(w - 0.8);
+    }
+
+    px += (tx - px) * 0.06;
+    py += (ty - py) * 0.06;
+
+    bird.rotation.set(
+      0.1 * Math.sin(w + 0.6) + py * 0.18,
+      0.5 * Math.sin(t * 0.55) + px * 0.3,
+      0.07 * Math.sin(t * 0.55 + 1.3) + 0.05 * Math.sin(w + 1.8)
+    );
+    bird.position.set(0.12 * Math.sin(t * 0.55), 0.2 * Math.sin(w - 0.7) + 0.05, 0);
+
+    r1.position.set(Math.cos(t * 0.9) * 7, Math.sin(t * 0.7) * 3 + 2, 5);
+    r2.position.set(-Math.cos(t * 0.8) * 7, -2, 4 + Math.sin(t) * 2);
+
+    if (dot && ring) {
+      const a = t * 1.15;
+      dot.position.set(5.6 * Math.cos(a), 0, 5.6 * Math.sin(a)).applyEuler(ring.rotation);
+    }
+
+    if (shadowEl) {
+      shadowEl.style.transform = `scale(${1 - 0.25 * Math.sin(w - 0.7)}, 1)`;
+      shadowEl.style.opacity = String(0.85 - 0.2 * Math.sin(w - 0.7));
+    }
+  }
+
+  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const t0 = performance.now();
+  let frameId = null;
+  let isRunning = true;
+
+  function loop(now) {
+    if (!isRunning) return;
+    const t = (now - t0) / 1000;
+    pose(t);
+    R.render(S, C);
+    if (!reduceMotion) {
+      frameId = requestAnimationFrame(loop);
+    }
+  }
+
+  pose(0.6);
+  R.render(S, C);
+  if (!reduceMotion) {
+    frameId = requestAnimationFrame(loop);
+  }
+
+  return {
+    resize: size,
+    destroy: () => {
+      isRunning = false;
+      if (frameId) {
+        cancelAnimationFrame(frameId);
+        frameId = null;
+      }
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+        resizeObserver = null;
+      }
+      if (pointerListener) {
+        window.removeEventListener('pointermove', pointerListener);
+        pointerListener = null;
+      }
+      geometries.forEach(g => g.dispose());
+      materials.forEach(m => m.dispose());
+      if (tex) tex.dispose();
+      R.dispose();
+    }
+  };
+}
 
 export function renderLoadingScreenHtml() {
   return `
@@ -73,198 +313,15 @@ export function initLoadingScreen() {
   }
 
   const cv = document.getElementById('pipra-loading-canvas');
-  const sc = document.getElementById('pipra-loading-scene');
   const shd = document.getElementById('pipra-loading-shd');
-  if (!cv || !sc || typeof window.THREE === 'undefined') {
-    return;
-  }
-
-  const THREE = window.THREE;
-  const R = new THREE.WebGLRenderer({ canvas: cv, antialias: true, alpha: true, powerPreference: 'high-performance' });
-  R.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  R.outputEncoding = THREE.sRGBEncoding;
-
-  const S = new THREE.Scene();
-  const C = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
-  C.position.set(0, 0.2, 25);
-
-  S.add(new THREE.HemisphereLight(0xdbe8ff, 0x1b1f66, 0.95));
-  const L = new THREE.DirectionalLight(0xffffff, 1);
-  L.position.set(-4, 7, 9);
-  S.add(L);
-
-  const r1 = new THREE.PointLight(0x6EA8FE, 2.2, 40);
-  const r2 = new THREE.PointLight(0x8B5CF6, 2, 40);
-  S.add(r1, r2);
-
-  const tex = new THREE.TextureLoader().load(D.tex);
-  tex.encoding = THREE.sRGBEncoding;
-  if (R.capabilities && R.capabilities.getMaxAnisotropy) {
-    tex.anisotropy = R.capabilities.getMaxAnisotropy();
-  }
-
-  const BX = 145, BY = 130, BS = 960, CX = 626, CY = 610, SCALE = 0.0108;
-  const AX = new THREE.Vector3(0.68, -0.733, 0).normalize();
-  const cap = new THREE.MeshStandardMaterial({
-    map: tex,
-    emissiveMap: tex,
-    emissive: 0xffffff,
-    emissiveIntensity: 0.55,
-    roughness: 0.4,
-    metalness: 0.1,
-  });
-
-  const bird = new THREE.Group();
-  const rig = new THREE.Group();
-  rig.position.set(-CX, CY, 0);
-  bird.add(rig);
-  bird.scale.setScalar(SCALE);
-  S.add(bird);
-
-  const cfg = {
-    upper: { p: [845, 665], z: 16, a: 0.62, ph: 0, bias: 0.12 },
-    mid: { p: [792, 728], z: 2, a: 0.55, ph: 0.5, bias: 0.08 },
-    lower: { p: [792, 728], z: -12, a: 0.46, ph: 1, bias: 0.04 },
-    head: { p: [800, 640], z: 6 },
-  };
-
-  const P = {};
-  D.parts.forEach(pt => {
-    const c = cfg[pt.n];
-    const sh = new THREE.Shape(pt.pts.map(q => new THREE.Vector2(q[0], -q[1])));
-    const dep = pt.n === 'head' ? 24 : 18;
-    const g = new THREE.ExtrudeGeometry(sh, {
-      depth: dep,
-      bevelEnabled: true,
-      bevelThickness: 4,
-      bevelSize: 2,
-      bevelSegments: 2,
-      curveSegments: 1,
+  if (cv && typeof window.THREE !== 'undefined') {
+    fullScreenBirdScene = createBirdScene(cv, {
+      scale: 0.0108,
+      cameraZ: 25,
+      showRing: true,
+      enablePointer: true,
+      shadowEl: shd,
     });
-    const ps = g.attributes.position;
-    const uv = g.attributes.uv;
-    for (let i = 0; i < ps.count; i++) {
-      uv.setXY(i, (ps.getX(i) - BX) / BS, 1 - (-ps.getY(i) - BY) / BS);
-    }
-    g.translate(-c.p[0], c.p[1], -dep / 2);
-    const side = new THREE.MeshStandardMaterial({
-      color: pt.col,
-      emissive: pt.col,
-      emissiveIntensity: 0.3,
-      roughness: 0.5,
-      metalness: 0.15,
-    });
-    const m = new THREE.Mesh(g, [cap, side]);
-    const piv = new THREE.Group();
-    piv.position.set(c.p[0], -c.p[1], c.z);
-    piv.add(m);
-    rig.add(piv);
-    P[pt.n] = { piv, g, base: ps.array.slice(), c };
-  });
-
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(5.6, 0.012, 8, 160),
-    new THREE.MeshBasicMaterial({ color: 0x6EA8FE, transparent: true, opacity: 0.35 })
-  );
-  ring.rotation.x = 1.25;
-  S.add(ring);
-
-  const dot = new THREE.Mesh(
-    new THREE.SphereGeometry(0.07, 16, 16),
-    new THREE.MeshBasicMaterial({ color: 0x9BC5FF })
-  );
-  S.add(dot);
-
-  function size() {
-    const w = sc.clientWidth;
-    const h = sc.clientHeight;
-    if (w === 0 || h === 0) return;
-    R.setSize(w, h, false);
-    C.aspect = w / h;
-    C.position.z = w / h < 1.2 ? 30 : 25;
-    C.updateProjectionMatrix();
-  }
-
-  if (window.ResizeObserver) {
-    resizeObserver = new ResizeObserver(size);
-    resizeObserver.observe(sc);
-  }
-  size();
-
-  let px = 0, py = 0, tx = 0, ty = 0;
-  pointerListener = (e) => {
-    tx = (e.clientX / window.innerWidth - 0.5) * 2;
-    ty = (e.clientY / window.innerHeight - 0.5) * 2;
-  };
-  window.addEventListener('pointermove', pointerListener);
-
-  const W = 2 * Math.PI / 1.35;
-
-  function pose(t) {
-    const w = W * t;
-    ['upper', 'mid', 'lower'].forEach(k => {
-      const o = P[k];
-      if (!o) return;
-      const c = o.c;
-      const a = c.bias + c.a * (Math.sin(w - c.ph) + 0.22 * Math.sin(2 * w - 2 * c.ph + 0.9));
-      o.piv.quaternion.setFromAxisAngle(AX, a);
-      const ps = o.g.attributes.position;
-      const b = o.base;
-      for (let i = 0; i < ps.count; i++) {
-        const x = b[i * 3];
-        const y = b[i * 3 + 1];
-        const r = Math.abs(x * AX.y - y * AX.x);
-        const u = r * 0.012;
-        ps.array[i * 3 + 2] = b[i * 3 + 2] + 1.1 * u * u * Math.sin(w - c.ph - r * 0.004);
-      }
-      ps.needsUpdate = true;
-    });
-
-    if (P.head && P.head.piv) {
-      const h = P.head.piv;
-      h.rotation.z = 0.05 * Math.sin(w - 1.1);
-      h.rotation.y = 0.12 * Math.sin(w * 0.5);
-      h.position.y = -640 + 4 * Math.sin(w - 0.8);
-    }
-
-    px += (tx - px) * 0.06;
-    py += (ty - py) * 0.06;
-
-    bird.rotation.set(
-      0.1 * Math.sin(w + 0.6) + py * 0.18,
-      0.5 * Math.sin(t * 0.55) + px * 0.3,
-      0.07 * Math.sin(t * 0.55 + 1.3) + 0.05 * Math.sin(w + 1.8)
-    );
-    bird.position.set(0.12 * Math.sin(t * 0.55), 0.2 * Math.sin(w - 0.7) + 0.05, 0);
-
-    r1.position.set(Math.cos(t * 0.9) * 7, Math.sin(t * 0.7) * 3 + 2, 5);
-    r2.position.set(-Math.cos(t * 0.8) * 7, -2, 4 + Math.sin(t) * 2);
-
-    const a = t * 1.15;
-    dot.position.set(5.6 * Math.cos(a), 0, 5.6 * Math.sin(a)).applyEuler(ring.rotation);
-
-    if (shd) {
-      shd.style.transform = `scale(${1 - 0.25 * Math.sin(w - 0.7)}, 1)`;
-      shd.style.opacity = String(0.85 - 0.2 * Math.sin(w - 0.7));
-    }
-  }
-
-  const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const t0 = performance.now();
-
-  function loop(now) {
-    const t = (now - t0) / 1000;
-    pose(t);
-    R.render(S, C);
-    if (!reduceMotion) {
-      animFrameId = requestAnimationFrame(loop);
-    }
-  }
-
-  pose(0.6);
-  R.render(S, C);
-  if (!reduceMotion) {
-    animFrameId = requestAnimationFrame(loop);
   }
 }
 
@@ -275,24 +332,73 @@ export function hideLoadingScreen(durationMs = 400) {
   el.classList.add('fade-out');
 
   setTimeout(() => {
-    if (animFrameId) {
-      cancelAnimationFrame(animFrameId);
-      animFrameId = null;
+    if (fullScreenBirdScene) {
+      fullScreenBirdScene.destroy();
+      fullScreenBirdScene = null;
     }
     if (msgIntervalId) {
       clearInterval(msgIntervalId);
       msgIntervalId = null;
     }
-    if (pointerListener) {
-      window.removeEventListener('pointermove', pointerListener);
-      pointerListener = null;
-    }
-    if (resizeObserver) {
-      resizeObserver.disconnect();
-      resizeObserver = null;
-    }
     if (el.parentNode) {
       el.parentNode.removeChild(el);
     }
   }, durationMs);
+}
+
+/* ==========================================================================
+   Page Transition Overlay Controller
+   ========================================================================== */
+
+let transitionOverlayEl = null;
+let transitionBirdScene = null;
+let transitionSafetyTimeoutId = null;
+
+export function showPageTransition(label = 'Loading...') {
+  if (!transitionOverlayEl) {
+    transitionOverlayEl = document.createElement('div');
+    transitionOverlayEl.id = 'pipra-page-transition';
+    transitionOverlayEl.className = 'pipra-page-transition';
+    transitionOverlayEl.setAttribute('aria-hidden', 'true');
+    transitionOverlayEl.innerHTML = `
+      <div class="transition-bird">
+        <canvas id="transition-bird-canvas"></canvas>
+      </div>
+      <div class="transition-label">
+        <span class="hero-pulse"></span>
+        <span id="transition-label-text">${label}</span>
+      </div>
+    `;
+    document.body.appendChild(transitionOverlayEl);
+  }
+
+  const labelEl = document.getElementById('transition-label-text');
+  if (labelEl) labelEl.textContent = label;
+
+  transitionOverlayEl.classList.add('active');
+
+  const canvas = document.getElementById('transition-bird-canvas');
+  if (canvas && !transitionBirdScene && typeof window.THREE !== 'undefined') {
+    transitionBirdScene = createBirdScene(canvas, {
+      scale: 0.0078,
+      cameraZ: 22,
+      showRing: false,
+      enablePointer: false,
+    });
+  }
+
+  if (transitionSafetyTimeoutId) clearTimeout(transitionSafetyTimeoutId);
+  // Auto-dismiss safety barrier if route navigation stalls
+  transitionSafetyTimeoutId = setTimeout(() => {
+    hidePageTransition();
+  }, 4000);
+}
+
+export function hidePageTransition() {
+  if (transitionSafetyTimeoutId) {
+    clearTimeout(transitionSafetyTimeoutId);
+    transitionSafetyTimeoutId = null;
+  }
+  if (!transitionOverlayEl) return;
+  transitionOverlayEl.classList.remove('active');
 }

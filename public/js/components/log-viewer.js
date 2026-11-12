@@ -20,7 +20,7 @@ export function renderLogViewer(logs = [], selectedStage = null) {
   const filtered = logs.filter(l => !selectedStage || l.stage_number === selectedStage);
 
   return `
-    <div class="pn">
+    <div class="pn log-panel-container">
       <div class="ph">
         <h2>Terminal log</h2>
         <div style="display: flex; gap: 8px; align-items: center;">
@@ -60,6 +60,9 @@ export function updateLogLines(container, logs = [], selectedStage = null) {
     counter.textContent = `${filtered.length} / ${logs.length} lines${selectedStage ? ` · stage ${selectedStage}` : ''}`;
   }
 
+  // Check if user was already at or near bottom before updating
+  const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+
   if (filtered.length === 0) {
     container.innerHTML = `<div style="padding: 16px; color: var(--t3);">No log output for this stage.</div>`;
     return;
@@ -72,4 +75,8 @@ export function updateLogLines(container, logs = [], selectedStage = null) {
     const isWarn = level === 'WARN' || level === 'ERROR';
     return `<div><span class="t">${time}</span><span class="t">${stage}</span><span class="${isWarn ? 'w' : 't'}">${level}</span><span>${escapeHtml(l.message)}</span></div>`;
   }).join('');
+
+  if (isNearBottom) {
+    container.scrollTop = container.scrollHeight;
+  }
 }
