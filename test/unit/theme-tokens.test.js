@@ -56,6 +56,12 @@ test('Theme Tokens: tokens.css declares complete [data-theme="light"] palette', 
   for (const token of requiredTokens) {
     assert.ok(css.includes(token), `tokens.css must define ${token}`);
   }
+
+  // Verify mockup parity tokens
+  const mockupTokens = ['--bg', '--sf', '--sr', '--ss', '--in', '--bd', '--bs', '--bst', '--pr', '--ok', '--warn', '--bad', '--info', '--neu', '--wm'];
+  for (const token of mockupTokens) {
+    assert.ok(css.includes(token), `tokens.css must declare mockup token ${token}`);
+  }
 });
 
 test('Theme Icons: icons.js contains sun and moon SVG definitions', () => {

@@ -1,69 +1,91 @@
 /**
- * Pipra Pipeline Timeline Component
- * High-density visual track of the 10 deterministic deployment lifecycle stages.
- * Fully keyboard accessible (Enter / Space to select / filter logs).
+ * Pipra Interactive Pipeline Timeline Component
+ * Proportional duration bar + 10-stage interactive button grid.
+ * Aligned with DESIGN.md & Control Plane Redesign Mockup.
  */
 
 import { renderIcon } from '../icons.js';
 
-export function renderPipelineTimeline(stages = [], selectedStageNumber = null, currentActiveStage = 1) {
-  const stageRows = stages.map(stage => {
-    const isSelected = selectedStageNumber === stage.stage_number;
-    const isRunning = stage.status === 'RUNNING';
-    const isSkipped = stage.status === 'SKIPPED';
-    const isFailed = stage.status === 'FAILED';
-    const isSucceeded = stage.status === 'SUCCEEDED';
-    const isRolledBack = stage.status === 'ROLLED_BACK' || stage.status === 'ROLLING_BACK';
+export function renderPipelineTimeline(stages = [], selectedStageNumber = null) {
+  // Fallback default stages if empty
+  const stageList = stages.length > 0 ? stages : [
+    { stage_number: 1, stage_name: 'Preflight validation', status: 'PENDING', duration_ms: 400 },
+    { stage_number: 2, stage_name: 'Source sync', status: 'PENDING', duration_ms: 400 },
+    { stage_number: 3, stage_name: 'Local verification', status: 'SKIPPED', duration_ms: 0 },
+    { stage_number: 4, stage_name: 'Docker image build', status: 'PENDING', duration_ms: 4700 },
+    { stage_number: 5, stage_name: 'Staging startup', status: 'PENDING', duration_ms: 500 },
+    { stage_number: 6, stage_name: 'Staging health check', status: 'PENDING', duration_ms: 3200 },
+    { stage_number: 7, stage_name: 'Production cutover', status: 'PENDING', duration_ms: 500 },
+    { stage_number: 8, stage_name: 'Production verification', status: 'PENDING', duration_ms: 3200 },
+    { stage_number: 9, stage_name: 'Automatic rollback', status: 'SKIPPED', duration_ms: 0 },
+    { stage_number: 10, stage_name: 'Finalization', status: 'PENDING', duration_ms: 300 },
+  ];
 
-    let iconHtml = renderIcon('clock', 12);
-    if (isRunning) {
-      iconHtml = `<span class="badge-dot" style="background-color: var(--color-action-indigo); animation: badge-pulse 1s infinite ease-in-out;"></span>`;
-    } else if (isSucceeded) {
-      iconHtml = `<span style="color: var(--color-status-success);">${renderIcon('check', 12)}</span>`;
+  const barSegments = stageList.map(s => {
+    const isSucceeded = s.status === 'SUCCEEDED';
+    const isFailed = s.status === 'FAILED';
+    const isRunning = s.status === 'RUNNING';
+    const color = isSucceeded ? 'ok' : (isFailed ? 'bad' : (isRunning ? 'info' : 'neu'));
+    const flexVal = s.duration_ms ? (s.duration_ms / 1000).toFixed(1) : 0.5;
+    return `<i style="--c: var(--${color}); flex: ${flexVal};" title="Stage ${s.stage_number}: ${s.stage_name} (${s.status})"></i>`;
+  }).join('');
+
+  const stageButtons = stageList.map((s, idx) => {
+    const num = s.stage_number || (idx + 1);
+    const isSelected = selectedStageNumber === num;
+    const isSucceeded = s.status === 'SUCCEEDED';
+    const isFailed = s.status === 'FAILED';
+    const isRunning = s.status === 'RUNNING';
+    const isSkipped = s.status === 'SKIPPED';
+
+    let color = 'neu';
+    let icon = 'minus';
+    let label = 'Skipped';
+
+    if (isSucceeded) {
+      color = 'ok';
+      icon = 'check';
+      label = 'Passed';
     } else if (isFailed) {
-      iconHtml = `<span style="color: var(--color-status-danger);">${renderIcon('x', 12)}</span>`;
-    } else if (isRolledBack) {
-      iconHtml = `<span style="color: var(--color-status-warning);">${renderIcon('rotate-ccw', 12)}</span>`;
-    } else if (isSkipped) {
-      iconHtml = `<span style="color: var(--color-text-muted); font-size: 11px;">—</span>`;
+      color = 'bad';
+      icon = 'x';
+      label = 'Failed';
+    } else if (isRunning) {
+      color = 'info';
+      icon = 'play';
+      label = 'Running';
+    } else if (!isSkipped) {
+      color = 'neu';
+      icon = 'clock';
+      label = 'Pending';
     }
 
-    const timingStr = stage.duration_ms 
-      ? `${(stage.duration_ms / 1000).toFixed(1)}s` 
-      : (isRunning ? 'running...' : (isSkipped ? 'skipped' : 'pending'));
+    const durationStr = s.duration_ms ? `${(s.duration_ms / 1000).toFixed(1)}s` : '';
 
     return `
-      <div class="stage-step ${isSelected ? 'active' : ''}" 
-           data-stage-number="${stage.stage_number}" 
-           role="button" 
-           tabindex="0"
-           aria-pressed="${isSelected}"
-           aria-label="Stage 0${stage.stage_number}: ${stage.stage_name}. Status: ${stage.status}. Duration: ${timingStr}">
-        <div class="stage-step-header">
-          <span class="stage-number">${stage.stage_number < 10 ? '0' : ''}${stage.stage_number}</span>
-          ${iconHtml}
-        </div>
-        <div class="stage-name" title="${stage.stage_name}">${stage.stage_name}</div>
-        <div class="stage-timing">${timingStr}</div>
-      </div>
+      <button class="st ${color}" aria-pressed="${isSelected}" data-stage-number="${num}">
+        <span class="n">Stage ${num}</span>
+        <b>${s.stage_name}</b>
+        <span class="s">
+          ${renderIcon(icon, 12)}
+          ${label}
+          <span class="mono num" style="margin-left: auto;">${durationStr}</span>
+        </span>
+      </button>
     `;
   }).join('');
 
   return `
-    <div class="card" style="margin-bottom: var(--space-6);">
-      <div class="card-header">
-        <span class="card-title">
-          ${renderIcon('layers', 16)}
-          <span>Pipeline Execution Track</span>
-        </span>
-        <span style="font-size: var(--font-size-xs); color: var(--color-text-secondary);">
-          ${selectedStageNumber ? `Filtering Stage 0${selectedStageNumber} (click again to reset)` : 'Click stage to filter terminal stream'}
-        </span>
+    <div class="pn">
+      <div class="ph">
+        <h2>Pipeline</h2>
+        <small>10 stages · select a stage to filter the log</small>
       </div>
-      <div class="card-body" style="padding: var(--space-3) var(--space-4);">
-        <div class="pipeline-timeline-horizontal">
-          ${stageRows}
-        </div>
+      <div class="bar" aria-hidden="true">
+        ${barSegments}
+      </div>
+      <div class="tl">
+        ${stageButtons}
       </div>
     </div>
   `;
@@ -71,18 +93,11 @@ export function renderPipelineTimeline(stages = [], selectedStageNumber = null, 
 
 export function bindTimelineEvents(container, onSelectStage) {
   if (!container) return;
-  const steps = container.querySelectorAll('.stage-step');
-  steps.forEach(step => {
-    step.addEventListener('click', () => {
-      const num = parseInt(step.getAttribute('data-stage-number'), 10);
+  const buttons = container.querySelectorAll('.st');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const num = parseInt(btn.getAttribute('data-stage-number'), 10);
       onSelectStage(num);
-    });
-    step.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        const num = parseInt(step.getAttribute('data-stage-number'), 10);
-        onSelectStage(num);
-      }
     });
   });
 }

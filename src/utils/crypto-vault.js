@@ -62,8 +62,54 @@ function decryptSecret(cipherString) {
   return decrypted.toString('utf8');
 }
 
+/**
+ * Generate cryptographically secure random secret token
+ */
+function generateRandomSecret(byteLength = 32) {
+  return crypto.randomBytes(byteLength).toString('hex');
+}
+
+/**
+ * Compute HMAC-SHA256 hex digest for payload
+ */
+function computeHmacSha256(rawBody, secret) {
+  if (!secret) return null;
+  const bodyBuf = Buffer.isBuffer(rawBody) ? rawBody : Buffer.from(String(rawBody || ''), 'utf8');
+  return crypto.createHmac('sha256', String(secret)).update(bodyBuf).digest('hex');
+}
+
+/**
+ * Constant-time verification of HMAC-SHA256 signature (neutralizes timing attacks)
+ * Accepts signature formatted as 'sha256=<hex>' or raw '<hex>'
+ */
+function verifyHmacSha256(rawBody, signatureHeader, secret) {
+  if (!signatureHeader || !secret) {
+    return false;
+  }
+
+  const expectedHex = computeHmacSha256(rawBody, secret);
+  if (!expectedHex) return false;
+
+  let providedHex = String(signatureHeader).trim();
+  if (providedHex.startsWith('sha256=')) {
+    providedHex = providedHex.substring('sha256='.length);
+  }
+
+  const expectedBuf = Buffer.from(expectedHex, 'hex');
+  const providedBuf = Buffer.from(providedHex, 'hex');
+
+  if (expectedBuf.length !== providedBuf.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(expectedBuf, providedBuf);
+}
+
 module.exports = {
   encryptSecret,
   decryptSecret,
+  generateRandomSecret,
+  computeHmacSha256,
+  verifyHmacSha256,
 };
 

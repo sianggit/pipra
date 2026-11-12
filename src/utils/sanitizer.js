@@ -24,6 +24,9 @@ function redactSecrets(text) {
     '$1$2[REDACTED]$2'
   );
 
+  // 6. Command line password flags (-pw "...", -pw secret, etc.)
+  redacted = redacted.replace(/(-pw\s+)(['"]?[^\s"']+['"]?)/gi, '$1[REDACTED_PASSWORD]');
+
   return redacted;
 }
 
@@ -79,6 +82,53 @@ function validateHost(host) {
   return hostnameRegex.test(trimmed);
 }
 
+function isBranchPermitted(branch, permittedList) {
+  if (!branch || typeof branch !== 'string') return false;
+  const b = branch.trim();
+  if (!b || !validateBranch(b)) return false;
+
+  let list = permittedList;
+  if (typeof list === 'string') {
+    try {
+      list = JSON.parse(list);
+    } catch {
+      list = list.split(',').map(s => s.trim()).filter(Boolean);
+    }
+  }
+
+  if (!Array.isArray(list) || list.length === 0) return true;
+
+  return list.some(pattern => {
+    if (!pattern || typeof pattern !== 'string') return false;
+    const p = pattern.trim();
+    if (p === '*' || p === b) return true;
+    if (p.endsWith('/*')) {
+      const prefix = p.slice(0, -1);
+      return b.startsWith(prefix) && b.length > prefix.length;
+    }
+    if (p.includes('*')) {
+      const regex = new RegExp('^' + p.replace(/\./g, '\\.').replace(/\*/g, '.*') + '$');
+      return regex.test(b);
+    }
+    return p === b;
+  });
+}
+
+/**
+ * Extract clean branch or tag name from SCM git ref (e.g. refs/heads/devel -> devel)
+ */
+function extractBranchFromRef(ref) {
+  if (!ref || typeof ref !== 'string') return null;
+  const trimmed = ref.trim();
+  if (trimmed.startsWith('refs/heads/')) {
+    return trimmed.substring('refs/heads/'.length).trim();
+  }
+  if (trimmed.startsWith('refs/tags/')) {
+    return trimmed.substring('refs/tags/'.length).trim();
+  }
+  return trimmed;
+}
+
 module.exports = {
   redactSecrets,
   validateBranch,
@@ -87,4 +137,6 @@ module.exports = {
   validatePort,
   validateEnvFile,
   validateHost,
+  isBranchPermitted,
+  extractBranchFromRef,
 };

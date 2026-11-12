@@ -11,7 +11,7 @@ const url = require('node:url');
 const config = require('./src/config');
 const logger = require('./src/utils/logger');
 const { getDatabase } = require('./src/db/database');
-const { seedDatabase } = require('./src/db/seed');
+const { seedCoreSystem } = require('./src/db/seed');
 const authService = require('./src/auth/auth-service');
 const deploymentRunner = require('./src/engine/deployment-runner');
 
@@ -23,6 +23,7 @@ const { handleDeploymentRoutes } = require('./src/routes/deployment-routes');
 const { handleAgentRoutes } = require('./src/routes/agent-routes');
 const { handleAuditRoutes } = require('./src/routes/audit-routes');
 const { handleStatsRoutes } = require('./src/routes/stats-routes');
+const { handleWebhookRoutes } = require('./src/routes/webhook-routes');
 
 // MIME types
 const MIME_TYPES = {
@@ -36,9 +37,9 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2',
 };
 
-// 1. Initialize Database & Seed
+// 1. Initialize Database & Seed Core Security Baseline (Users & System Agents)
 const db = getDatabase();
-seedDatabase(db);
+seedCoreSystem(db);
 
 // 2. Initialize Persistent Deployment Engine
 deploymentRunner.init();
@@ -72,13 +73,17 @@ function parseJsonBody(req) {
       }
     });
     req.on('end', () => {
+      req.rawBody = bodyStr;
       try {
         resolve(bodyStr ? JSON.parse(bodyStr) : {});
       } catch {
         resolve({});
       }
     });
-    req.on('error', () => resolve({}));
+    req.on('error', () => {
+      req.rawBody = '';
+      resolve({});
+    });
   });
 }
 
@@ -107,6 +112,7 @@ const server = http.createServer(async (req, res) => {
   try {
     if (pathname.startsWith('/api/')) {
       if (handleAuthRoutes(req, res, pathname, body, user)) return;
+      if (handleWebhookRoutes(req, res, pathname, query, body, user, req.rawBody)) return;
       if (handleAppRoutes(req, res, pathname, query, body, user)) return;
       if (handleEnvRoutes(req, res, pathname, query, body, user)) return;
       if (handleDeploymentRoutes(req, res, pathname, query, body, user)) return;

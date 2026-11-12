@@ -7,18 +7,43 @@
 :root,
 [data-theme="dark"] {
   /* ========================================================================
-     1. Surface Tokens (4-Tier Dark Hierarchy)
+     1. Mockup Core Design Tokens (DESIGN.md §3.1 Dark Baseline)
      ======================================================================== */
-  --color-surface-base: #000000;         /* Primary canvas / app background */
+  --bg: #080B12;                         /* Canvas background */
+  --sf: #101722;                         /* Surface / panels / cards */
+  --sr: #151F2D;                         /* Surface raised / menus / popovers */
+  --ss: #0D131D;                         /* Surface subtle / table headers */
+  --in: #0B111B;                         /* Input background */
+  --t1: #EDF2F8;                         /* Text primary */
+  --t2: #A3AFBF;                         /* Text secondary */
+  --t3: #8391A6;                         /* Text muted / metadata */
+  --bd: #283446;                         /* Border default */
+  --bs: #1C2736;                         /* Border subtle */
+  --bst: #3A4A60;                        /* Border strong */
+  --pr: #6EA8FE;                         /* Action primary */
+  --prh: #8AB9FF;                        /* Action primary hover */
+  --pri: #07101C;                        /* Action text inverse */
+  --ring: #9BC5FF;                       /* Focus ring */
+  --ok: #43C99A;                         /* Status success */
+  --warn: #F0B85B;                       /* Status warning */
+  --bad: #F27683;                        /* Status danger / error */
+  --info: #7CB8F8;                       /* Status info */
+  --neu: #93A1B4;                        /* Status neutral / queued */
+  --wm: none;                            /* Wordmark filter (dark = none) */
+  --sh: 0 12px 32px -10px rgb(0 0 0 / 45%);
+
+  /* ========================================================================
+     2. Surface Tokens & Backward Compatibility Aliases
+     ======================================================================== */
+  --color-surface-base: var(--bg);       /* #080B12 */
   --color-surface-sidebar: #0b1019;      /* Navigation surface */
-  --color-surface-muted: #11151c;        /* Panels, cards, content regions */
-  --color-surface-strong: #171d27;       /* Card headers, elevated blocks */
-  --color-surface-raised: #1f2735;       /* Menus, popovers, dropdown items */
-  --color-surface-subtle: #0d131d;       /* Nested recessed regions */
-  --color-surface-input: #0b111b;        /* Inputs, textareas, selects */
+  --color-surface-muted: var(--sf);      /* #101722 */
+  --color-surface-strong: var(--sr);     /* #151F2D */
+  --color-surface-raised: var(--sr);     /* #151F2D */
+  --color-surface-subtle: var(--ss);     /* #0D131D */
+  --color-surface-input: var(--in);      /* #0B111B */
   --color-surface-hover: #1c2536;        /* Hover surface highlight */
 
-  /* Backward compatibility aliases */
   --color-bg-canvas: var(--color-surface-base);
   --color-bg-sidebar: var(--color-surface-sidebar);
   --color-bg-surface: var(--color-surface-muted);
@@ -175,15 +200,50 @@
    ========================================================================== */
 
 [data-theme="light"] {
-  /* Surfaces (Clean Off-White Canvas & White Panels) */
-  --color-surface-base: #f8fafc;         /* Primary canvas (Slate 50) */
+  /* ========================================================================
+     1. Mockup Core Design Tokens (DESIGN.md §3.2 Light Baseline)
+     ======================================================================== */
+  --bg: #F6F8FB;                         /* Canvas background */
+  --sf: #ffffff;                         /* Surface / panels / cards */
+  --sr: #ffffff;                         /* Surface raised / popovers */
+  --ss: #F1F4F9;                         /* Surface subtle / table headers */
+  --in: #ffffff;                         /* Input background */
+  --t1: #0F1A2A;                         /* Text primary */
+  --t2: #46546A;                         /* Text secondary */
+  --t3: #5E6B80;                         /* Text muted / metadata */
+  --bd: #D3DBE6;                         /* Border default */
+  --bs: #E4E9F0;                         /* Border subtle */
+  --bst: #B6C2D2;                        /* Border strong */
+  --pr: #2563EB;                         /* Action primary */
+  --prh: #1D4FD0;                        /* Action primary hover */
+  --pri: #ffffff;                        /* Action text inverse */
+  --ring: #2563EB;                       /* Focus ring */
+  --ok: #0E7A55;                         /* Status success */
+  --warn: #8F5600;                       /* Status warning */
+  --bad: #C0283A;                        /* Status danger / error */
+  --info: #1D6FC4;                       /* Status info */
+  --neu: #5E6B80;                        /* Status neutral / queued */
+  --wm: invert(1);                       /* Wordmark filter (light = inverted) */
+  --sh: 0 12px 32px -10px rgb(15 26 42 / 18%);
+
+  /* ========================================================================
+     2. Surface Tokens & Backward Compatibility Aliases
+     ======================================================================== */
+  --color-surface-base: var(--bg);       /* #F6F8FB */
   --color-surface-sidebar: #ffffff;      /* Navigation bar */
-  --color-surface-muted: #ffffff;        /* Panels, cards, content regions */
-  --color-surface-strong: #f1f5f9;       /* Card headers, table headers, elevated blocks */
-  --color-surface-raised: #ffffff;       /* Menus, popovers, dropdown items */
-  --color-surface-subtle: #f1f5f9;       /* Nested recessed regions, code blocks */
-  --color-surface-input: #ffffff;        /* Inputs, textareas, selects */
+  --color-surface-muted: var(--sf);      /* #ffffff */
+  --color-surface-strong: var(--ss);     /* #F1F4F9 */
+  --color-surface-raised: var(--sr);     /* #ffffff */
+  --color-surface-subtle: var(--ss);     /* #F1F4F9 */
+  --color-surface-input: var(--in);      /* #ffffff */
   --color-surface-hover: #f1f5f9;        /* Hover surface highlight */
+
+  --color-bg-canvas: var(--color-surface-base);
+  --color-bg-sidebar: var(--color-surface-sidebar);
+  --color-bg-surface: var(--color-surface-muted);
+  --color-bg-surface-strong: var(--color-surface-strong);
+  --color-bg-surface-raised: var(--color-surface-raised);
+  --color-bg-input: var(--color-surface-input);
 
   /* Text & Content Colors (Empirically Verified >= 4.5:1) */
   --color-text-primary: #0f172a;         /* Slate 900 (17.58:1 on white, 16.57:1 on #f8fafc) */

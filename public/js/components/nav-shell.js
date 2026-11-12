@@ -12,7 +12,6 @@ import { canDeploy } from '../auth.js';
 export function renderNavShell(activeRoute = 'overview') {
   const { user, activeEnvironment, environments = [] } = state.get();
   const theme = getTheme();
-  const logoSrc = theme === 'light' ? '/assets/logo-navy-tagline.png' : '/assets/logo-white-tagline.png';
   const themeIcon = theme === 'dark' ? 'sun' : 'moon';
   const themeLabel = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
 
@@ -22,73 +21,60 @@ export function renderNavShell(activeRoute = 'overview') {
     is_production: activeEnvironment === 'production'
   };
 
+  const navItems = [
+    { id: 'overview', label: 'Overview', icon: 'activity', path: '#/overview' },
+    ...(canDeploy() ? [{ id: 'deploy', label: 'Deploy', icon: 'play', path: '#/deploy' }] : []),
+    { id: 'history', label: 'Deployments', icon: 'clock', path: '#/history' },
+    { id: 'applications', label: 'Applications', icon: 'layers', path: '#/applications' },
+    { id: 'environments', label: 'Environments', icon: 'server', path: '#/environments' },
+    { id: 'infrastructure', label: 'Infrastructure', icon: 'cpu', path: '#/infrastructure' },
+    { id: 'admin', label: 'Audit & admin', icon: 'shield', path: '#/admin' },
+  ];
+
   return `
-    <header class="pipra-header" role="banner">
-      <div class="pipra-brand-area">
-        <button id="mobile-nav-toggle" class="mobile-nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
-          ${renderIcon('menu', 18)}
-        </button>
+    <header class="hd" role="banner">
+      <button id="mobile-nav-toggle" class="ib mobile-only" aria-label="Toggle navigation menu" aria-expanded="false" style="display: none;">
+        ${renderIcon('menu', 16)}
+      </button>
 
-        <a href="#/overview" class="pipra-brand" aria-label="Pipra — Pipeline & Release Engineering Platform">
-          <img id="pipra-brand-logo" src="${logoSrc}" alt="Pipra" class="pipra-brand-mark" width="148" height="34" />
-        </a>
+      <a href="#/overview" class="logo" aria-label="Pipra Control Plane">
+        <img class="s" src="/assets/logo.png" alt="Pipra" style="height: 26px; width: auto;" />
+        <span style="font-size: 17px; font-weight: 700; letter-spacing: -0.02em; color: var(--t1); margin-left: 2px;">Pipra</span>
+      </a>
 
-        <!-- Environment Operational Context -->
-        <div style="display: flex; align-items: center; gap: var(--space-2);">
-          <span class="env-tag ${currentEnv.is_production ? 'env-tag-prod' : 'env-tag-nonprod'}" role="status" aria-label="Active Environment: ${currentEnv.display_name || currentEnv.name}">
-            ${currentEnv.is_production ? renderIcon('shield', 12) : renderIcon('box', 12)}
-            <span>${(currentEnv.display_name || currentEnv.name || 'DEVEL').toUpperCase()}</span>
-          </span>
-        </div>
-      </div>
+      <!-- Environment Operational Context Badge -->
+      <span class="ctx" role="status" aria-label="Active environment: ${currentEnv.display_name || currentEnv.name}">
+        <b style="background: ${currentEnv.is_production ? 'var(--bad)' : 'var(--info)'};"></b>
+        <span>${currentEnv.display_name || currentEnv.name || 'Development'}</span>
+      </span>
 
-      <nav id="pipra-main-nav" class="pipra-nav" role="navigation" aria-label="Primary Navigation">
-        <a href="#/overview" class="pipra-nav-link ${activeRoute === 'overview' ? 'active' : ''}">
-          ${renderIcon('activity', 14)}
-          <span>Overview</span>
-        </a>
-        ${canDeploy() ? `
-          <a href="#/deploy" class="pipra-nav-link ${activeRoute === 'deploy' ? 'active' : ''}">
-            ${renderIcon('play', 14)}
-            <span>Deploy</span>
-          </a>
-        ` : ''}
-        <a href="#/history" class="pipra-nav-link ${activeRoute === 'history' ? 'active' : ''}">
-          ${renderIcon('clock', 14)}
-          <span>Deployments</span>
-        </a>
-        <a href="#/applications" class="pipra-nav-link ${activeRoute === 'applications' ? 'active' : ''}">
-          ${renderIcon('layers', 14)}
-          <span>Applications</span>
-        </a>
-        <a href="#/environments" class="pipra-nav-link ${activeRoute === 'environments' ? 'active' : ''}">
-          ${renderIcon('server', 14)}
-          <span>Environments</span>
-        </a>
-        <a href="#/infrastructure" class="pipra-nav-link ${activeRoute === 'infrastructure' ? 'active' : ''}">
-          ${renderIcon('cpu', 14)}
-          <span>Infrastructure</span>
-        </a>
-        <a href="#/admin" class="pipra-nav-link ${activeRoute === 'admin' ? 'active' : ''}">
-          ${renderIcon('shield', 14)}
-          <span>Audit & Admin</span>
-        </a>
+      <!-- Primary Navigation Links -->
+      <nav id="pipra-main-nav" aria-label="Primary Navigation" style="display: flex; gap: 2px; overflow-x: auto; flex: 1; scrollbar-width: none;">
+        ${navItems.map(item => {
+          const isActive = activeRoute === item.id || (item.id === 'history' && activeRoute === 'deployments');
+          return `
+            <a href="${item.path}" class="pipra-nav-link ${isActive ? 'active' : ''}" ${isActive ? 'aria-current="page"' : ''}>
+              ${renderIcon(item.icon, 15)}
+              <span>${item.label}</span>
+            </a>
+          `;
+        }).join('')}
       </nav>
 
-      <div class="pipra-header-actions">
-        <!-- Accessible Light/Dark Theme Switcher -->
-        <button id="btn-theme-toggle" class="btn btn-ghost btn-sm btn-icon" aria-label="${themeLabel}" title="${themeLabel}">
+      <!-- Header Actions -->
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <button id="btn-theme-toggle" class="ib" aria-label="${themeLabel}" title="${themeLabel}">
           ${renderIcon(themeIcon, 15)}
         </button>
 
         ${user ? `
-          <div class="user-badge" aria-label="Authenticated operator: ${user.username} (${user.role})">
+          <span class="usr" aria-label="Authenticated operator: ${user.username} (${user.role})">
             ${renderIcon('user', 14)}
             <span>${user.username}</span>
-            <span class="user-role-tag">${user.role}</span>
-          </div>
-          <button id="btn-logout" class="btn btn-ghost btn-sm btn-icon" aria-label="Sign out of platform" title="Sign out">
-            ${renderIcon('log-out', 14)}
+            <b>${(user.role || 'OPERATOR').toUpperCase()}</b>
+          </span>
+          <button id="btn-logout" class="ib" aria-label="Sign out" title="Sign out">
+            ${renderIcon('log-out', 15)}
           </button>
         ` : `
           <a href="#/login" class="btn btn-primary btn-sm">Sign In</a>

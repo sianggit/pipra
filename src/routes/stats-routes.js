@@ -3,9 +3,51 @@
  */
 
 const { getDatabase } = require('../db/database');
+const doraAnalytics = require('../engine/dora-analytics');
 
 function handleStatsRoutes(req, res, pathname, query, body, user) {
   const db = getDatabase();
+
+  // 1. DORA Metrics API: GET /api/stats/dora
+  if (req.method === 'GET' && pathname === '/api/stats/dora') {
+    const timeframe = query.timeframe || '30d';
+    const applicationId = query.application_id || null;
+    const doraData = doraAnalytics.computeDoraMetrics(db, { timeframe, applicationId });
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(doraData));
+    return true;
+  }
+
+  // 2. DORA Metrics Export: GET /api/stats/dora/export
+  if (req.method === 'GET' && pathname === '/api/stats/dora/export') {
+    const timeframe = query.timeframe || '30d';
+    const applicationId = query.application_id || null;
+    const format = (query.format || 'csv').toLowerCase();
+    const doraData = doraAnalytics.computeDoraMetrics(db, { timeframe, applicationId });
+
+    const timestamp = new Date().toISOString().substring(0, 10);
+    const filename = `pipra-dora-metrics-${timeframe}-${timestamp}.${format === 'json' ? 'json' : 'csv'}`;
+
+    if (format === 'json') {
+      res.writeHead(200, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Content-Disposition': `attachment; filename="${filename}"`,
+      });
+      res.end(JSON.stringify(doraData, null, 2));
+      return true;
+    }
+
+    const csvContent = doraAnalytics.generateDoraCsv(doraData);
+    res.writeHead(200, {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    res.end(csvContent);
+    return true;
+  }
+
+  // 3. Existing Overview stats: GET /api/stats/overview
 
   if (req.method === 'GET' && pathname === '/api/stats/overview') {
     const totalCount = db.prepare('SELECT COUNT(*) as count FROM deployments').get().count;

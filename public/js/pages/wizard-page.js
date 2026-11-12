@@ -1,7 +1,7 @@
 /**
  * Pipra Deployment Wizard Page
- * Multi-step deployment configuration, automated preflight inspection,
- * and production confirmation gate.
+ * 3-Step Wizard with persistent summary aside and production cutover safeguards.
+ * Aligned with DESIGN.md & Control Plane Redesign Mockup.
  */
 
 import { api } from '../api.js';
@@ -11,290 +11,348 @@ import { canDeploy } from '../auth.js';
 
 export async function renderWizardPage(container, params = {}) {
   container.innerHTML = `
-    <div style="padding: var(--space-8); text-align: center; color: var(--color-text-secondary);">
-      <div style="font-family: var(--font-family-mono); font-size: var(--font-size-sm);">Loading deployment configuration...</div>
+    <div style="padding: 48px; text-align: center; color: var(--t2);">
+      <div class="mono">Loading deployment configuration...</div>
     </div>
   `;
 
   try {
-    const apps = await api.getApplications();
-    const envs = await api.getEnvironments();
+    const [apps, envs] = await Promise.all([
+      api.getApplications(),
+      api.getEnvironments(),
+    ]);
 
-    const selectedAppId = params.app || (apps[0] ? apps[0].id : '');
-    const selectedEnvId = params.env || (envs[0] ? envs[0].id : '');
+    const initialApp = apps.find(a => a.id === params.app || a.name === params.app) || apps[0];
+    const initialEnv = envs.find(e => e.id === params.env || e.name === params.env) || envs[0];
 
-    const selectedApp = apps.find(a => a.id === selectedAppId || a.name === selectedAppId) || apps[0];
-    const selectedEnv = envs.find(e => e.id === selectedEnvId || e.name === selectedEnvId) || envs[0];
-
-    const isProd = selectedEnv ? selectedEnv.is_production : false;
-
-    // Default tag with timestamp
     const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const defaultTag = `v1.0.${now.getMonth() + 1}-b${now.getDate()}${pad(now.getHours())}`;
 
-    container.innerHTML = `
-      <div class="page-header">
-        <div class="page-title-group">
-          <h1>
-            ${renderIcon('play', 22)}
-            <span>Deployment Wizard</span>
-          </h1>
-          <p class="page-subtitle">Configure, validate, and launch a deterministic 10-stage deployment pipeline.</p>
+    // Wizard reactive state
+    const wz = {
+      step: 1,
+      appId: initialApp ? initialApp.id : '',
+      envId: initialEnv ? initialEnv.id : '',
+      branch: initialApp ? (initialApp.default_branch || 'devel') : 'devel',
+      tag: defaultTag,
+      containerName: initialApp ? (initialApp.name || 'asdp-dims-fe') : 'asdp-dims-fe',
+      verifyOnHost: false,
+      confirmed: false,
+    };
+
+    const steps = ['Target', 'Revision & image', 'Preflight & cutover'];
+
+    function renderView() {
+      const currentApp = apps.find(a => a.id === wz.appId) || apps[0] || {};
+      const currentEnv = envs.find(e => e.id === wz.envId) || envs[0] || {};
+      const isProd = currentEnv.is_production || currentEnv.name === 'production';
+      const isRefValid = /^(devel|main|prod|staging|release\/.+|hotfix\/.+)$/.test(wz.branch);
+
+      // Step 1: Target Application & Environment
+      const step1Html = `
+        <div class="fl">
+          <div>
+            <label for="wz-app-select" style="display: block; font-weight: 500; margin-bottom: 5px;">Application</label>
+            <select id="wz-app-select" aria-label="Application" style="width: 100%; height: 36px; padding: 0 10px; background: var(--in); border: 1px solid var(--bd); border-radius: 6px;">
+              ${apps.map(a => `<option value="${a.id}" ${a.id === wz.appId ? 'selected' : ''}>${a.display_name} (${a.name})</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label id="wz-env-label" style="display: block; font-weight: 500; margin-bottom: 5px;">Target environment</label>
+            <div class="seg" role="group" aria-labelledby="wz-env-label">
+              ${envs.map(e => {
+                const ep = e.is_production || e.name === 'production';
+                const isSelected = e.id === wz.envId;
+                return `
+                  <button type="button" class="${ep ? 'prod' : ''}" aria-pressed="${isSelected}" data-env-id="${e.id}">
+                    <b>${e.display_name || e.name}</b>
+                    <span class="dim">${ep ? 'Production critical' : 'Non-production'}</span>
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          </div>
         </div>
-      </div>
+      `;
 
-      <div style="max-width: 820px; margin: 0 auto;">
-        <!-- Compact Step Progression Bar -->
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-5); padding: var(--space-3) var(--space-4); background-color: var(--color-surface-muted); border: 1px solid var(--color-border-default); border-radius: var(--radius-sm); font-size: 12px;">
-          <div style="display: flex; align-items: center; gap: var(--space-2); color: var(--color-action-primary); font-weight: 600;">
-            <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background-color: var(--color-action-primary); color: var(--color-text-inverse); font-size: 11px;">1</span>
-            <span>Target Environment</span>
+      // Step 2: Revision & Docker Image
+      const step2Html = `
+        <div class="fl">
+          <div class="row2">
+            <div>
+              <label for="wz-branch" style="display: block; font-weight: 500; margin-bottom: 5px;">Branch / tag / ref</label>
+              <input id="wz-branch" type="text" value="${wz.branch}" aria-invalid="${!isRefValid}" style="width: 100%; height: 36px; padding: 0 10px; background: var(--in); border: 1px solid var(--bd); border-radius: 6px;" />
+              <div class="${isRefValid ? 'hint' : 'err'}" style="font-size: 12px; margin-top: 5px; color: ${isRefValid ? 'var(--t3)' : 'var(--bad)'};">
+                ${isRefValid ? 'Permitted: devel, main, prod, staging, release/*, hotfix/*' : 'Not a permitted ref. Use devel, main, prod, staging, release/*, or hotfix/*.'}
+              </div>
+            </div>
+            <div>
+              <label for="wz-tag" style="display: block; font-weight: 500; margin-bottom: 5px;">Image tag</label>
+              <input id="wz-tag" type="text" class="mono" value="${wz.tag}" style="width: 100%; height: 36px; padding: 0 10px; background: var(--in); border: 1px solid var(--bd); border-radius: 6px;" />
+              <div class="hint" style="color: var(--t3); font-size: 12px; margin-top: 5px;">Immutable identifier for the Docker build</div>
+            </div>
           </div>
-          <span style="color: var(--color-text-muted);">→</span>
-          <div style="display: flex; align-items: center; gap: var(--space-2); color: var(--color-action-primary); font-weight: 600;">
-            <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background-color: var(--color-action-primary); color: var(--color-text-inverse); font-size: 11px;">2</span>
-            <span>Revision & Image</span>
+
+          <div>
+            <label for="wz-container" style="display: block; font-weight: 500; margin-bottom: 5px;">Container name</label>
+            <input id="wz-container" type="text" class="mono" value="${wz.containerName}" style="width: 100%; height: 36px; padding: 0 10px; background: var(--in); border: 1px solid var(--bd); border-radius: 6px;" />
+            <div class="hint" style="color: var(--t3); font-size: 12px; margin-top: 5px;">Target container identity. Staging uses &lt;name&gt;-staging-&lt;timestamp&gt;.</div>
           </div>
-          <span style="color: var(--color-text-muted);">→</span>
-          <div style="display: flex; align-items: center; gap: var(--space-2); color: var(--color-text-secondary); font-weight: 600;">
-            <span style="display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background-color: var(--color-surface-strong); border: 1px solid var(--color-border-default); color: var(--color-text-secondary); font-size: 11px;">3</span>
-            <span>Preflight & Cutover</span>
+
+          <label class="ck">
+            <input type="checkbox" id="wz-verify-host" ${wz.verifyOnHost ? 'checked' : ''} />
+            <span>
+              Verify on host before building
+              <div class="hint" style="color: var(--t3); font-size: 12px;">Runs npm ci and npm run build first. Leave off for faster multi-stage builds.</div>
+            </span>
+          </label>
+        </div>
+      `;
+
+      // Step 3: Preflight & Cutover
+      const step3Html = `
+        <div class="fl">
+          <div>
+            <h2 style="font-size: 14px; font-weight: 600; margin-bottom: 8px;">Preflight validation</h2>
+            <dl style="grid-template-columns: 170px 1fr; border: 1px solid var(--bs); border-radius: 8px;">
+              <dt>Production port</dt>
+              <dd class="mono">${currentApp.ports?.production || ':4000'}</dd>
+              <dt>Staging isolation port</dt>
+              <dd class="mono">${currentApp.ports?.staging || ':4001'}</dd>
+              <dt>Host directory</dt>
+              <dd class="mono">${currentApp.host_directory || '/home/devel/asdp-dims-fe'}</dd>
+              <dt>Rollback target release</dt>
+              <dd class="mono">${currentEnv.active_release_id || 'asdp-dims-fe:devel-latest'}</dd>
+              <dt>Preflight result</dt>
+              <dd><span class="b ok">${renderIcon('check', 12)}Passed</span></dd>
+            </dl>
+          </div>
+
+          ${isProd ? `
+            <div class="grd" style="margin: 0;">
+              ${renderIcon('shield', 18)}
+              <div>
+                <b>Production cutover may cause a brief interruption.</b><br>
+                Target <code>${currentEnv.host || '127.0.0.1'}</code> · release <code>${wz.branch}@${wz.tag}</code>. Strategy: staging health check, atomic container cutover, and production verification. If verification fails, Pipra automatically rolls back to <span class="mono">${currentEnv.active_release_id || 'last known-good release'}</span>.
+              </div>
+            </div>
+
+            <label class="ck" style="margin-top: 4px;">
+              <input type="checkbox" id="wz-confirm-prod" ${wz.confirmed ? 'checked' : ''} />
+              <span>I confirm deploying <b>${wz.tag}</b> to <b>Production</b>.</span>
+            </label>
+          ` : ''}
+        </div>
+      `;
+
+      container.innerHTML = `
+        <div class="pg">
+          <div>
+            <h1>Deploy</h1>
+            <p class="sub">Configure, validate, and launch the 10-stage deployment pipeline.</p>
           </div>
         </div>
 
-        <form id="wizard-form" class="card">
-          <div class="card-header">
-            <span class="card-title">
-              ${renderIcon('layers', 16)}
-              <span>Pipeline Configuration</span>
-            </span>
-            <span style="font-size: var(--font-size-xs); color: var(--color-text-secondary);">
-              All fields required
-            </span>
+        <!-- 3-Step Stepper Progress Bar -->
+        <div class="stp">
+          ${steps.map((s, idx) => {
+            const stepNum = idx + 1;
+            const isCurrent = wz.step === stepNum;
+            const isCompleted = wz.step > stepNum;
+            return `
+              <div class="${isCurrent ? 'on' : (isCompleted ? 'dn' : '')}">
+                <b>${isCompleted ? renderIcon('check', 12) : stepNum}</b>
+                <span>${s}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+
+        <!-- 2-Column Split: Wizard Step Form & Persistent Summary Aside -->
+        <div class="wz">
+          <div class="pn">
+            <div class="ph">
+              <h2>${steps[wz.step - 1]}</h2>
+              <small>All fields required</small>
+            </div>
+
+            ${[step1Html, step2Html, step3Html][wz.step - 1]}
+
+            <div class="ph" style="border-top: 1px solid var(--bs); border-bottom: 0;">
+              <button type="button" class="btn" id="btn-wizard-back" ${wz.step === 1 ? 'disabled' : ''}>
+                Back
+              </button>
+
+              ${wz.step < 3 ? `
+                <button type="button" class="btn p" id="btn-wizard-next" ${wz.step === 2 && (!isRefValid || !wz.tag) ? 'disabled' : ''}>
+                  Continue
+                </button>
+              ` : `
+                <button type="button" class="btn ${isProd ? 'd' : 'p'}" id="btn-wizard-launch"
+                  style="${isProd ? 'background: var(--bad); color: var(--pri); border-color: var(--bad);' : ''}"
+                  ${isProd && !wz.confirmed ? 'disabled' : ''}>
+                  ${renderIcon('play', 14)}
+                  <span>Start deployment to ${isProd ? 'Production' : (currentEnv.display_name || currentEnv.name)}</span>
+                </button>
+              `}
+            </div>
           </div>
 
-          <div class="card-body">
-            <!-- Step 1: Application and Environment -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4);">
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" for="wizard-app">Target Application *</label>
-                <select id="wizard-app" class="form-control" required>
-                  ${apps.map(a => `<option value="${a.id}" ${a.id === selectedApp?.id ? 'selected' : ''}>${a.display_name} (${a.name})</option>`).join('')}
-                </select>
-              </div>
-
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" for="wizard-env">Target Environment *</label>
-                <select id="wizard-env" class="form-control" required>
-                  ${envs.map(e => `<option value="${e.id}" ${e.id === selectedEnv?.id ? 'selected' : ''}>${e.display_name} [${e.is_production ? 'PRODUCTION' : 'NON-PROD'}]</option>`).join('')}
-                </select>
-              </div>
+          <!-- Persistent Summary Aside -->
+          <aside class="pn" aria-label="Deployment summary">
+            <div class="ph">
+              <h2>Summary</h2>
             </div>
-
-            <!-- Step 2: Release Reference -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4);">
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" for="wizard-branch">Branch / Tag / Ref *</label>
-                <input type="text" id="wizard-branch" class="form-control" value="${selectedApp?.default_branch || 'devel'}" required />
-                <div class="form-hint">Permitted branches: ${selectedApp?.permitted_branches?.join(', ') || 'devel, main, prod'}</div>
-              </div>
-
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label" for="wizard-tag">Target Image Tag *</label>
-                <input type="text" id="wizard-tag" class="form-control font-mono" value="${defaultTag}" required />
-                <div class="form-hint">Immutable image identifier for Docker build</div>
-              </div>
-            </div>
-
-            <!-- Step 3: Container Name -->
-            <div class="form-group">
-              <label class="form-label" for="wizard-container-name">Target Container Name *</label>
-              <input type="text" id="wizard-container-name" class="form-control font-mono" value="${selectedApp?.name || 'asdp-dims-fe'}" required />
-              <div class="form-hint">Production container identity. Temporary staging containers use <code>&lt;name&gt;-staging-&lt;timestamp&gt;</code>.</div>
-            </div>
-
-            <!-- Step 4: Preflight Validation Summary Box -->
-            <div id="preflight-box" style="background-color: var(--color-surface-strong); border: 1px solid var(--color-border-default); border-radius: var(--radius-sm); padding: var(--space-4); margin-bottom: var(--space-5);">
-              <div style="font-weight: 600; font-size: 12px; margin-bottom: var(--space-3); display: flex; align-items: center; justify-content: space-between;">
-                <span style="display: flex; align-items: center; gap: var(--space-2);">
-                  ${renderIcon('shield', 14)}
-                  <span>Automated Preflight Parameters</span>
+            <dl style="grid-template-columns: 100px 1fr;">
+              <dt>Application</dt>
+              <dd>${currentApp.display_name || 'ASDP DIMS Frontend'}</dd>
+              <dt>Environment</dt>
+              <dd>
+                <span class="env ${isProd ? 'prod' : (currentEnv.name && currentEnv.name.includes('staging') ? 'staging' : 'devel')}">
+                  <i></i>${currentEnv.display_name || currentEnv.name || 'devel'}
                 </span>
-                <span style="color: var(--color-status-success); font-size: 11px; font-weight: 600;">✓ PASSED PRE-CHECK</span>
-              </div>
-              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-3); font-size: 12px;">
-                <div>
-                  <span style="color: var(--color-text-secondary); font-size: 11px;">Production Port:</span>
-                  <div id="pf-prod-port" style="font-weight: 600; font-family: var(--font-family-mono); color: var(--color-action-primary); margin-top: 2px;">:${selectedApp?.host_port || 4000}</div>
-                </div>
-                <div>
-                  <span style="color: var(--color-text-secondary); font-size: 11px;">Staging Isolation Port:</span>
-                  <div id="pf-stag-port" style="font-weight: 600; font-family: var(--font-family-mono); margin-top: 2px;">:${selectedApp?.staging_port || 4001}</div>
-                </div>
-                <div>
-                  <span style="color: var(--color-text-secondary); font-size: 11px;">Target Host Working Dir:</span>
-                  <div id="pf-app-dir" style="font-family: var(--font-family-mono); font-size: 11px; margin-top: 2px;">${selectedApp?.app_dir || '/home/devel/asdp-dims-fe'}</div>
-                </div>
-                <div>
-                  <span style="color: var(--color-text-secondary); font-size: 11px;">Active Rollback Release:</span>
-                  <div id="pf-rollback" style="font-family: var(--font-family-mono); font-size: 11px; color: var(--color-text-primary); margin-top: 2px;">
-                    ${selectedEnv?.active_release_id || 'asdp-dims-fe:devel-latest'}
-                  </div>
-                </div>
-              </div>
-            </div>
+              </dd>
+              <dt>Revision</dt>
+              <dd class="mono">${wz.branch || '—'}</dd>
+              <dt>Image tag</dt>
+              <dd class="mono">${wz.tag || '—'}</dd>
+              <dt>Rollback to</dt>
+              <dd class="mono">${currentEnv.active_release_id || 'asdp-dims-fe:devel-latest'}</dd>
+            </dl>
+          </aside>
+        </div>
+      `;
 
-            <!-- Optional verification options -->
-            <div class="form-group">
-              <label style="display: flex; align-items: center; gap: var(--space-3); cursor: pointer;">
-                <input type="checkbox" id="wizard-local-verify" />
-                <span style="font-size: 12px; color: var(--color-text-primary);">
-                  Enable host local verification ('npm ci' and 'npm run build' before container build)
-                </span>
-              </label>
-              <div class="form-hint" style="margin-left: 24px;">
-                Leave unchecked for fast multi-stage container builds.
-              </div>
-            </div>
+      // Event Listeners for Step 1
+      const appSelect = document.getElementById('wz-app-select');
+      if (appSelect) {
+        appSelect.addEventListener('change', (e) => {
+          wz.appId = e.target.value;
+          const a = apps.find(x => x.id === wz.appId);
+          if (a) {
+            wz.branch = a.default_branch || 'devel';
+            wz.containerName = a.name || 'asdp-dims-fe';
+          }
+          renderView();
+        });
+      }
 
-            <!-- Production Confirmation Barrier -->
-            <div id="prod-barrier-container" style="display: ${isProd ? 'block' : 'none'}; margin-top: var(--space-5); padding: var(--space-4); background-color: var(--color-status-danger-bg); border: 1px solid var(--color-status-danger-border); border-radius: var(--radius-sm);">
-              <div style="display: flex; align-items: flex-start; gap: var(--space-3);">
-                <input type="checkbox" id="wizard-confirm-prod" style="margin-top: 3px;" />
-                <div>
-                  <label for="wizard-confirm-prod" style="font-weight: 600; color: var(--color-status-danger); cursor: pointer;">
-                    Confirm Production Release Deployment
-                  </label>
-                  <p style="font-size: 12px; color: var(--color-text-secondary); margin-top: 4px;">
-                    This deployment will execute an atomic zero-downtime cutover on production serving port. If post-cutover verification probes fail, Pipra will automatically restore the backup release.
-                  </p>
-                </div>
-              </div>
-            </div>
+      const envButtons = container.querySelectorAll('.seg button');
+      envButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          wz.envId = btn.getAttribute('data-env-id');
+          wz.confirmed = false;
+          renderView();
+        });
+      });
 
-            ${!canDeploy() ? `
-              <div style="margin-top: var(--space-4); padding: var(--space-3) var(--space-4); background-color: var(--color-status-warning-bg); border: 1px solid var(--color-status-warning-border); border-radius: var(--radius-sm); font-size: 12px; color: var(--color-text-primary); display: flex; align-items: center; gap: var(--space-2);">
-                ${renderIcon('shield', 16)}
-                <span><strong>Observation Mode:</strong> Your account has read-only access. Launching deployments requires Operator or Admin role.</span>
-              </div>
-            ` : ''}
+      // Event Listeners for Step 2
+      const branchInput = document.getElementById('wz-branch');
+      if (branchInput) {
+        branchInput.addEventListener('input', (e) => {
+          wz.branch = e.target.value;
+          const nextBtn = document.getElementById('btn-wizard-next');
+          const valid = /^(devel|main|prod|staging|release\/.+|hotfix\/.+)$/.test(wz.branch);
+          if (nextBtn) nextBtn.disabled = !valid || !wz.tag;
+          // Update summary
+          const summaryRev = container.querySelector('aside dl dd:nth-of-type(3)');
+          if (summaryRev) summaryRev.textContent = wz.branch || '—';
+        });
+      }
 
-            <div id="wizard-error" style="display: none; margin-top: var(--space-4); padding: var(--space-3) var(--space-4); background-color: var(--color-status-danger-bg); border: 1px solid var(--color-status-danger-border); border-radius: var(--radius-sm); color: var(--color-status-danger); font-size: 12px;"></div>
-          </div>
+      const tagInput = document.getElementById('wz-tag');
+      if (tagInput) {
+        tagInput.addEventListener('input', (e) => {
+          wz.tag = e.target.value;
+          const nextBtn = document.getElementById('btn-wizard-next');
+          const valid = /^(devel|main|prod|staging|release\/.+|hotfix\/.+)$/.test(wz.branch);
+          if (nextBtn) nextBtn.disabled = !valid || !wz.tag;
+          // Update summary
+          const summaryTag = container.querySelector('aside dl dd:nth-of-type(4)');
+          if (summaryTag) summaryTag.textContent = wz.tag || '—';
+        });
+      }
 
-          <div class="card-footer" style="justify-content: flex-end; gap: var(--space-3);">
-            <a href="#/overview" class="btn btn-secondary">Cancel</a>
-            <button type="submit" id="btn-submit-deploy" class="btn btn-primary" ${!canDeploy() ? 'disabled title="Operator or Admin role required"' : ''}>
-              ${renderIcon('play', 14)}
-              <span>Launch Deployment Pipeline</span>
-            </button>
-          </div>
-        </form>
-      </div>
-    `;
+      const containerInput = document.getElementById('wz-container');
+      if (containerInput) {
+        containerInput.addEventListener('input', (e) => {
+          wz.containerName = e.target.value;
+        });
+      }
 
-    bindWizardEvents(apps, envs);
+      const verifyHostCk = document.getElementById('wz-verify-host');
+      if (verifyHostCk) {
+        verifyHostCk.addEventListener('change', (e) => {
+          wz.verifyOnHost = e.target.checked;
+        });
+      }
+
+      // Event Listeners for Step 3
+      const confirmProdCk = document.getElementById('wz-confirm-prod');
+      if (confirmProdCk) {
+        confirmProdCk.addEventListener('change', (e) => {
+          wz.confirmed = e.target.checked;
+          const launchBtn = document.getElementById('btn-wizard-launch');
+          if (launchBtn) launchBtn.disabled = !wz.confirmed;
+        });
+      }
+
+      // Step Navigation Controls
+      const backBtn = document.getElementById('btn-wizard-back');
+      if (backBtn) {
+        backBtn.addEventListener('click', () => {
+          if (wz.step > 1) {
+            wz.step--;
+            renderView();
+          }
+        });
+      }
+
+      const nextBtn = document.getElementById('btn-wizard-next');
+      if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+          if (wz.step < 3) {
+            wz.step++;
+            renderView();
+          }
+        });
+      }
+
+      const launchBtn = document.getElementById('btn-wizard-launch');
+      if (launchBtn) {
+        launchBtn.addEventListener('click', async () => {
+          try {
+            launchBtn.disabled = true;
+            launchBtn.innerHTML = `${renderIcon('loader', 14)}<span>Launching pipeline...</span>`;
+
+            const deployment = await api.createDeployment({
+              application_id: wz.appId,
+              environment_id: wz.envId,
+              branch: wz.branch,
+              image_tag: wz.tag,
+              container_name: wz.containerName,
+              verify_on_host: wz.verifyOnHost,
+              operator_confirmed: wz.confirmed,
+            });
+
+            window.location.hash = `#/deployments/${deployment.id}`;
+          } catch (err) {
+            alert(`Failed to launch deployment: ${err.message}`);
+            launchBtn.disabled = false;
+            launchBtn.innerHTML = `${renderIcon('play', 14)}<span>Start deployment</span>`;
+          }
+        });
+      }
+    }
+
+    renderView();
   } catch (err) {
     container.innerHTML = `
-      <div class="card" style="border-left: 3px solid var(--color-status-danger);">
-        <div class="card-body">
-          <h3 style="color: var(--color-status-danger); margin-bottom: var(--space-2);">Error loading wizard</h3>
-          <p style="color: var(--color-text-secondary);">${err.message}</p>
-        </div>
+      <div class="pn" style="margin-top: 24px; border-color: var(--bad);">
+        <div class="ph"><h2 style="color: var(--bad);">Failed to load deployment wizard</h2></div>
+        <div class="pb"><p class="t2">${err.message || 'An error occurred while loading deployment wizard.'}</p></div>
       </div>
     `;
-  }
-}
-
-function bindWizardEvents(apps, envs) {
-  const appSelect = document.getElementById('wizard-app');
-  const envSelect = document.getElementById('wizard-env');
-  const prodBarrier = document.getElementById('prod-barrier-container');
-  const confirmProd = document.getElementById('wizard-confirm-prod');
-  const form = document.getElementById('wizard-form');
-  const errorBox = document.getElementById('wizard-error');
-  const submitBtn = document.getElementById('btn-submit-deploy');
-
-  // Dynamic preflight parameter updates
-  function updatePreflight() {
-    const selectedApp = apps.find(a => a.id === appSelect?.value);
-    const selectedEnv = envs.find(e => e.id === envSelect?.value);
-
-    if (selectedApp) {
-      const prodPort = document.getElementById('pf-prod-port');
-      const stagPort = document.getElementById('pf-stag-port');
-      const appDir = document.getElementById('pf-app-dir');
-      const containerInput = document.getElementById('wizard-container-name');
-      const branchInput = document.getElementById('wizard-branch');
-
-      if (prodPort) prodPort.textContent = `:${selectedApp.host_port || 4000}`;
-      if (stagPort) stagPort.textContent = `:${selectedApp.staging_port || 4001}`;
-      if (appDir) appDir.textContent = selectedApp.app_dir || '';
-      if (containerInput) containerInput.value = selectedApp.name || '';
-      if (branchInput && !branchInput.value) branchInput.value = selectedApp.default_branch || 'devel';
-    }
-
-    if (selectedEnv) {
-      const rollbackElem = document.getElementById('pf-rollback');
-      if (rollbackElem) rollbackElem.textContent = selectedEnv.active_release_id || 'asdp-dims-fe:devel-latest';
-
-      if (selectedEnv.is_production) {
-        prodBarrier.style.display = 'block';
-      } else {
-        prodBarrier.style.display = 'none';
-        if (confirmProd) confirmProd.checked = false;
-      }
-    }
-  }
-
-  if (appSelect) appSelect.addEventListener('change', updatePreflight);
-  if (envSelect) envSelect.addEventListener('change', updatePreflight);
-
-  if (form) {
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      errorBox.style.display = 'none';
-
-      const appVal = appSelect.value;
-      const envVal = envSelect.value;
-      const branchVal = document.getElementById('wizard-branch').value.trim();
-      const tagVal = document.getElementById('wizard-tag').value.trim();
-      const containerVal = document.getElementById('wizard-container-name').value.trim();
-      const localVerify = document.getElementById('wizard-local-verify').checked;
-
-      const selectedEnv = envs.find(env => env.id === envVal);
-      const isProd = selectedEnv && selectedEnv.is_production;
-
-      if (isProd && confirmProd && !confirmProd.checked) {
-        errorBox.textContent = 'Confirmation required: Check the production release confirmation box before launching.';
-        errorBox.style.display = 'block';
-        confirmProd.focus();
-        return;
-      }
-
-      submitBtn.disabled = true;
-      submitBtn.innerHTML = `<span>Starting Pipeline...</span>`;
-
-      try {
-        const result = await api.createDeployment({
-          application_id: appVal,
-          environment_id: envVal,
-          branch: branchVal,
-          tag: tagVal,
-          container_name: containerVal,
-          confirm_production: isProd,
-          enable_local_verification: localVerify,
-        });
-
-        // Redirect immediately to live execution screen
-        window.location.hash = `#/deployments/${result.deploymentId}`;
-      } catch (err) {
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = `${renderIcon('play', 14)} <span>Launch Deployment Pipeline</span>`;
-        errorBox.textContent = err.message;
-        errorBox.style.display = 'block';
-      }
-    });
   }
 }
