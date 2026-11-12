@@ -136,35 +136,23 @@ export function renderLoginPage(container) {
           <div class="dim" style="font-size: 12px;">Pipeline &amp; Release Engineering Platform</div>
         </div>
 
-        <form id="login-form" class="fl" style="padding: 24px 28px 8px;">
+        <form id="login-form" class="fl" style="padding: 24px 28px 28px;">
           <div id="login-error-msg" style="display: none; padding: 8px 12px; background: color-mix(in srgb, var(--bad) 12%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 30%, transparent); border-radius: 6px; color: var(--bad); font-size: 12px;"></div>
 
           <div>
             <label for="u">Operator username</label>
-            <input id="u" type="text" autocomplete="username" value="operator" required />
+            <input id="u" type="text" autocomplete="username" placeholder="Enter username" required />
           </div>
 
           <div>
             <label for="pw">Password</label>
-            <input id="pw" type="password" autocomplete="current-password" value="pipra-ops-2026" required />
+            <input id="pw" type="password" autocomplete="current-password" placeholder="Enter password" required />
           </div>
 
           <button type="submit" id="btn-submit-login" class="btn p" style="height: 38px; width: 100%; margin-top: 4px;">
             Sign in to control plane
           </button>
         </form>
-
-        <details style="padding: 8px 28px 24px;">
-          <summary class="t2" style="cursor: pointer; font-size: 12px;">Prototype accounts</summary>
-          <div class="chips" style="margin-top: 10px;">
-            <button type="button" class="chip" data-user="admin" data-pw="pipra-admin-2026">admin</button>
-            <button type="button" class="chip" data-user="operator" data-pw="pipra-ops-2026" aria-pressed="true">operator</button>
-            <button type="button" class="chip" data-user="viewer" data-pw="pipra-viewer-2026">viewer</button>
-          </div>
-          <div class="hint" style="font-size: 11px; color: var(--t3); margin-top: 6px;">
-            Role permissions and route gating are enforced.
-          </div>
-        </details>
       </div>
 
       <div class="dim" style="position: fixed; bottom: 20px; font-size: 12px;">
@@ -182,21 +170,6 @@ export function renderLoginPage(container) {
       themeToggle.innerHTML = renderIcon(nextIcon, 16);
     });
   }
-
-  // Bind prototype account chips
-  const chips = container.querySelectorAll('.chip');
-  chips.forEach(chip => {
-    chip.addEventListener('click', () => {
-      chips.forEach(c => c.removeAttribute('aria-pressed'));
-      chip.setAttribute('aria-pressed', 'true');
-      const u = chip.getAttribute('data-user');
-      const pw = chip.getAttribute('data-pw');
-      const uInput = document.getElementById('u');
-      const pwInput = document.getElementById('pw');
-      if (uInput) uInput.value = u;
-      if (pwInput) pwInput.value = pw;
-    });
-  });
 
   // Bind login form submission
   const form = document.getElementById('login-form');

@@ -33,16 +33,36 @@
   <link rel="stylesheet" href="/css/tokens.css" />
   <link rel="stylesheet" href="/css/base.css" />
   <link rel="stylesheet" href="/css/components.css" />
+  <link rel="stylesheet" href="/css/loading-screen.css" />
+
+  <!-- Vendor Libraries (Self-hosted Three.js for 3D bird animation) -->
+  <script src="/vendor/three.min.js"></script>
 </head>
 <body>
-  <div id="app">
-    <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--color-surface-base, #080B12); color: var(--color-text-primary, #edf1f7);">
-      <div style="display: flex; flex-direction: column; align-items: center; gap: 16px;">
-        <img id="pipra-init-logo" src="/assets/logo-white-tagline.png" alt="Pipra" style="height: 38px; width: auto;" />
-        <div style="font-size: 13px; color: var(--color-text-secondary, #94a3b8); font-family: var(--font-family-mono, monospace);">Initializing Pipra Control Plane...</div>
-      </div>
+  <!-- Pipra 3D Animated Loading Screen Overlay -->
+  <div id="pipra-loading-screen" class="pipra-loading-wrapper" aria-busy="true">
+    <div class="world" aria-hidden="true">
+      <div class="halo"></div>
+      <div class="floor"></div>
+      <div id="pipra-loading-sks"></div>
     </div>
+    <main class="stage">
+      <div class="scene" id="pipra-loading-scene" role="img" aria-label="Pipra bird logo flying">
+        <div class="shd" id="pipra-loading-shd"></div>
+        <canvas id="pipra-loading-canvas"></canvas>
+      </div>
+      <svg class="wm" viewBox="0 0 1368 448" role="img" aria-label="Pipra">
+        <path fill-rule="evenodd" fill="currentColor" d="M388 121L383 124L381 130L381 371L386 377L389 378L455 378L462 373L463 368L462 126L457 121ZM1053 114L1047 112L1018 112L989 120L966 135L949 153L945 153L943 151L942 123L936 118L869 118L864 122L863 371L867 377L935 378L941 375L943 370L943 244L951 222L956 213L973 196L994 185L1004 183L1052 183L1056 181L1058 177L1058 121ZM784 143L768 131L748 120L713 112L673 112L635 122L631 126L613 136L594 154L589 155L586 150L587 127L581 120L517 119L510 122L508 126L508 447L589 447L588 358L589 350L593 345L597 346L619 365L660 382L717 383L728 381L764 366L778 356L799 335L806 326L822 293L828 255L828 238L822 202L816 187L806 168ZM656 176L677 176L708 186L724 198L734 210L743 231L743 264L732 288L718 302L705 310L680 318L649 317L629 311L614 302L602 290L594 278L588 254L588 242L592 221L605 202L614 193L626 185ZM1098 134L1096 139L1096 181L1097 185L1101 188L1110 184L1124 181L1132 176L1164 169L1188 167L1239 168L1261 175L1277 189L1281 198L1282 206L1281 209L1275 214L1180 214L1145 217L1132 222L1116 225L1088 240L1074 254L1067 264L1063 274L1060 293L1060 306L1064 330L1074 346L1084 357L1104 370L1136 382L1201 383L1211 381L1245 368L1266 354L1276 344L1283 342L1286 349L1285 369L1287 374L1291 377L1367 377L1367 190L1361 185L1358 169L1351 156L1334 136L1314 122L1291 113L1264 106L1226 104L1192 105L1151 113L1142 117L1125 120L1111 128L1103 130ZM1143 301L1142 288L1145 278L1154 269L1165 263L1193 257L1276 256L1280 257L1285 262L1285 274L1278 293L1261 310L1241 319L1210 325L1183 324L1157 317L1145 306ZM280 41L245 27L230 24L13 23L0 26L0 374L12 378L75 378L83 374L84 274L88 266L93 264L218 264L236 262L277 246L295 233L308 220L325 193L328 178L334 165L335 126L326 93L318 78L299 55ZM85 95L92 89L197 89L218 94L233 104L239 110L245 121L248 136L246 163L238 177L233 182L218 192L204 196L183 198L91 197L86 193L84 188ZM405 9L390 18L383 26L378 36L376 58L381 73L394 87L410 94L433 94L451 87L462 75L471 56L470 41L462 26L452 15L440 9L427 7Z"/>
+      </svg>
+      <div class="st">
+        <div class="msg" id="pipra-loading-msg"></div>
+        <div class="tr" role="progressbar" aria-label="Loading Pipra control plane"><i></i></div>
+      </div>
+    </main>
+    <div class="tag">Build with confidence. Ship with control.</div>
   </div>
+
+  <div id="app"></div>
 
   <!-- Main ES Module Bootstrap -->
   <script type="module" src="/js/app.js"></script>
