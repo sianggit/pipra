@@ -1,95 +1,115 @@
-# Comprehensive Architecture & Implementation Plan: ASYST Website & ASYST Website CMS v3 Dedicated Dev Server (172.25.192.11) Blue-Green Migration to Pipra
+# Comprehensive Architecture & Implementation Plan: Standalone Pipra Installation & Blue-Green Onboarding on ASYST Website Dev Server (172.25.192.11)
 
 **Document ID:** `.reference/docs/modules/execution/development-plan/2026-11-12_Execution_ASYST-Website-And-CMS-v3-Pipra-Adoption-Plan_v1.0.md`  
-**Module:** Execution & Remote Server Delivery  
-**Target Server:** `172.25.192.11` (`new-web-asyst`, Rocky Linux 9, Kernel `5.14.0-687.10.1.el9_8`)  
-**Target Host User:** `devel` (Password Vaulted)  
-**Target Applications:**  
+**Module:** Execution & Standalone Server Deployment  
+**Target Host Server:** `172.25.192.11` (`new-web-asyst`, Rocky Linux 9.8, user `devel`, password `c9DsZCTXio`)  
+**Target Web Cockpit URL:** `http://172.25.192.11:4200`  
+**Target Managed Applications:**  
 1. **`asyst-website`**: Corporate Public Website (Vite / React 18 / Tailwind / Nginx)  
    - Local: `D:\Anggit Arisa Siwi Pratama\ASYST\Development\js\asyst-website`  
    - Host: `/home/devel/asyst-website`  
+   - Production Port: **`:80`** (`:80 -> :3000`) | Staging Port: **`:3001`**  
 2. **`asyst-website-cms`**: Corporate Content Management System v3 (Next.js 15 App Router / Prisma / PostgreSQL)  
    - Local: `D:\Anggit Arisa Siwi Pratama\ASYST\Development\js\asyst-website-cms`  
    - Host: `/home/devel/asyst-website-cms`  
-**Reference Scripts Verified on Host:**  
-- `/home/devel/asyst-website/scripts/deploy-asyst-website.sh`  
-- `/home/devel/asyst-website-cms/scripts/deploy-asyst-website-cms.sh`  
+   - Production Port: **`:3000`** (`:3000 -> :3000`) | Staging Port: **`:3002`**  
 **Status:** PROPOSED & READY FOR USER REVIEW  
 **Date:** 2026-11-12  
 
 ---
 
-## 1. Executive Summary & Forensic Audit of `172.25.192.11`
+## 1. Executive Summary
 
-Live SSH telemetry audit of `devel@172.25.192.11` confirms that both applications are currently running as standalone Docker containers managed via manual bash scripts:
+This plan outlines the direct installation of a **standalone Pipra Control Plane instance** on the dedicated ASYST Website development server (`172.25.192.11`). By hosting Pipra locally on the server:
+- **Zero-Latency Loopback Execution:** Pipra interacts directly with the local Docker daemon (`unix:///var/run/docker.sock`) without SSH latency, intermediate network hops, or connection timeout risks.
+- **Self-Contained Deployment Cockpit:** The development and DevOps teams can manage, trigger, and inspect blue-green deployments directly at:
+  
+  🌐 **`http://172.25.192.11:4200`**
 
-```text
-CONTAINER ID   IMAGE                      COMMAND               STATUS       PORTS                                        NAMES
-7eaad6e5d59b   asyst-website-cms:v3.0.0   "docker-entrypoint…"  Up 9 hours   0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp  asyst-website-cms
-26f3c5648534   asyst-website:v3.0.0       "/docker-entrypoint…" Up 2 days    0.0.0.0:80->3000/tcp, [::]:80->3000/tcp      asyst-website
+- **Full Legacy Script Replacement:** Replaces `/home/devel/asyst-website/scripts/deploy-asyst-website.sh` and `/home/devel/asyst-website-cms/scripts/deploy-asyst-website-cms.sh` with Pipra's deterministic 10-stage execution pipeline, complete with 3D flight telemetry, SSE streaming logs, automated rollback, and SLSA provenance attestation.
+
+---
+
+## 2. Target Server Telemetry & Preflight Audit
+
+Forensic inspection of `devel@172.25.192.11` confirmed:
+- **OS:** Rocky Linux 9.8 (Blue Onyx), Kernel `5.14.0-687.10.1.el9_8`
+- **Docker Engine:** Active and responsive (containers `asyst-website` and `asyst-website-cms` currently running).
+- **Port 4200:** Unbound and free.
+- **Node.js:** Not yet installed on host. (Rocky Linux 9 AppStream provides native `nodejs:22` stream via `dnf`).
+- **Firewall:** `firewalld` is active. Port `4200/tcp` must be explicitly opened.
+- **Sudo Access:** User `devel` has verified password-authenticated `sudo` permissions.
+
+---
+
+## 3. Standalone Pipra Installation Architecture
+
+```mermaid
+flowchart TD
+    subgraph Browser_Client["Engineering Team Web Browser"]
+        User["Operator / Admin Cockpit (http://172.25.192.11:4200)"]
+    end
+
+    subgraph Host_System["Target Server: 172.25.192.11 (new-web-asyst)"]
+        Firewall["Firewalld (Permit 4200/tcp)"]
+        Systemd["systemd (pipra.service)"]
+
+        subgraph Pipra_Runtime["Pipra Standalone Control Plane (:4200)"]
+            Node["Node.js 22 Runtime (native node:sqlite & node:crypto)"]
+            App["/home/devel/pipra (ES Modules + SSE Hub)"]
+            DB["SQLite WAL: /home/devel/pipra/data/pipra.db"]
+        end
+
+        subgraph Docker_Engine["Local Docker Daemon"]
+            Web_Live["asyst-website (:80)"]
+            Web_Stg["asyst-website-staging (:3001)"]
+            CMS_Live["asyst-website-cms (:3000)"]
+            CMS_Stg["asyst-website-cms-staging (:3002)"]
+        end
+
+        subgraph Storage["Persistent Host Volumes"]
+            Uploads["/home/devel/asyst-website-cms/uploads"]
+        end
+    end
+
+    User -->|HTTP / SSE| Firewall
+    Firewall --> App
+    Systemd -->|Manage Lifecycle| Node
+    Node --> App
+    App --> DB
+    App -->|Local Docker Execution| Docker_Engine
+    Docker_Engine -.-> Uploads
 ```
 
-### Objectives:
-1. Transition both applications from manual shell script execution (`deploy-asyst-website.sh` & `deploy-asyst-website-cms.sh`) to Pipra's automated 10-stage Blue-Green deployment engine.
-2. Maintain 100% feature parity with the existing zero-downtime cutover, health check loops, SPA deep-link routing checks, and Prisma database migrations.
-3. Configure Pipra Control Plane (`http://172.25.230.100:4200` or local cockpit) with vaulted SSH credentials (`devel@172.25.192.11`) to orchestrate deployments remotely, providing live SSE terminal logs, 3D execution HUD, and cryptographic SLSA provenance attestation.
-
 ---
 
-## 2. Parameter & Lifecycle Mapping Matrix
+## 4. Port Allocation & Blue-Green Isolation Matrix
 
-Every procedural step in `deploy-asyst-website.sh` and `deploy-asyst-website-cms.sh` maps 1:1 into Pipra's execution engine:
-
-| Legacy Script Flag | `asyst-website` | `asyst-website-cms` | Pipra Native Stage & Field | Engine Guarantee |
-|---|---|---|---|---|
-| `--branch` | `master` / `main` | `main` / `master` | **Stage 2: SOURCE_PULL** (`branch`) | Authenticated git fetch via host deploy key. |
-| `--tag` | `v3.0.0` / semantic | `v3.0.0` / semantic | **Stage 1 & 4** (`image_tag`) | Tagged as `asyst-website:<tag>` / `asyst-website-cms:<tag>`. |
-| `--name` | `asyst-website` | `asyst-website-cms` | `applications.slug` / `applications.name` | Container identifier. |
-| `--port` | `:80` (or `:3000`) | `:3000` | **Stage 8** (`host_port`) | Live customer-facing host port. |
-| `--staging-port` | `:3001` | `:3002` | **Stage 5 & 6** (`staging_port`) | Non-conflicting ephemeral port for health probes. |
-| `--env-file` | `.env.prd` | `.env.production` | `application_environments.env_file` | Production secrets injected at build/run time. |
-| `--dockerfile` | `Dockerfile` | `Dockerfile` | `applications.dockerfile` | Multi-stage Docker recipe in project root. |
-| `prisma migrate` | N/A | `npx prisma migrate deploy` | **Stage 3: PREFLIGHT** (`.pipra.yaml`) | Automated DB migrations executed before cutover. |
-| Deep-Link Probe | `/about` (SPA route) | `/login` & `/api/public/news`| **Stage 6: HEALTH_PROBES** (`.pipra.yaml`)| Comprehensive HTTP 200/301/302/304 assertions. |
-| Sub-second Cutover| `rename -> backup -> run`| `rename -> backup -> run`| **Stage 8: CUTOVER_EXECUTION** | Atomic container switch with 0.0s downtime. |
-| Auto-Rollback | Re-start backup on fail | Re-start backup on fail | **Stage 9: POST_CUTOVER_VERIFY** | Instant rollback restoration if health check fails. |
-
----
-
-## 3. Host Port & Network Allocation Matrix (`172.25.192.11`)
-
-To guarantee zero port collision between the two workloads during concurrent or staggered blue-green cutovers:
-
-| Application | Container Name | Production Port | Staging Port (Blue/Green) | Target Workspace | Volume Mounts & Flags |
+| Application | Service Name | Production Port | Staging Port (Blue/Green Probe) | Host App Directory | Volume Mounts |
 |---|---|---|---|---|---|
-| **ASYST Website v3** | `asyst-website` | **`80`** (`:80->3000`) | **`3001`** (`:3001->3000`) | `/home/devel/asyst-website` | Ephemeral (Static Nginx SPA) |
-| **ASYST Website CMS v3**| `asyst-website-cms`| **`3000`** (`:3000->3000`)| **`3002`** (`:3002->3000`) | `/home/devel/asyst-website-cms`| `-v /home/devel/asyst-website-cms/uploads:/app/public/uploads`<br>`-v /home/devel/asyst-website-cms/prisma.config.ts:/app/prisma.config.ts`<br>`--add-host=host.docker.internal:host-gateway` |
+| **Pipra Control Plane** | `pipra.service` | **`4200`** | N/A | `/home/devel/pipra` | `/home/devel/pipra/data` |
+| **ASYST Website v3** | `asyst-website` | **`80`** (`:80 -> :3000`) | **`3001`** (`:3001 -> :3000`) | `/home/devel/asyst-website` | Ephemeral (Static Nginx SPA) |
+| **ASYST Website CMS v3**| `asyst-website-cms`| **`3000`** (`:3000 -> :3000`)| **`3002`** (`:3002 -> :3000`)| `/home/devel/asyst-website-cms`| `-v /home/devel/asyst-website-cms/uploads:/app/public/uploads`<br>`-v /home/devel/asyst-website-cms/prisma.config.ts:/app/prisma.config.ts`<br>`--add-host=host.docker.internal:host-gateway` |
 
 ---
 
-## 4. Declarative Pipeline Specifications (`.pipra.yaml`)
+## 5. Declarative Pipeline Specifications (`.pipra.yaml`)
 
-### 4.1 Declarative Spec for `asyst-website` (`/home/devel/asyst-website/.pipra.yaml`)
-
-Commit this file to `D:\Anggit Arisa Siwi Pratama\ASYST\Development\js\asyst-website\.pipra.yaml` and `/home/devel/asyst-website/.pipra.yaml`:
-
+### 5.1 Specification for `asyst-website` (`/home/devel/asyst-website/.pipra.yaml`)
 ```yaml
 version: "1.0"
 
-# 1. Preflight Hooks: Verify build readiness
 preflight:
   - command: "npm run lint"
     timeout_sec: 120
     continue_on_error: true
 
-# 2. Container Build Configuration
 build:
   dockerfile: "Dockerfile"
   context: "."
   args:
     env: ""
 
-# 3. Staging Verification: Automated root and SPA deep-link routing checks on port 3001
 verification:
   - command: "curl -fsS --retry 8 --retry-delay 2 http://127.0.0.1:3001/ -o /dev/null"
     timeout_sec: 30
@@ -98,21 +118,16 @@ verification:
     timeout_sec: 30
     continue_on_error: false
 
-# 4. Post-Cutover Verification: Verify live port 80 health
 post_cutover:
   - command: "curl -fsS http://127.0.0.1:80/ -o /dev/null"
     timeout_sec: 30
     continue_on_error: true
 ```
 
-### 4.2 Declarative Spec for `asyst-website-cms` (`/home/devel/asyst-website-cms/.pipra.yaml`)
-
-Commit this file to `D:\Anggit Arisa Siwi Pratama\ASYST\Development\js\asyst-website-cms\.pipra.yaml` and `/home/devel/asyst-website-cms/.pipra.yaml`:
-
+### 5.2 Specification for `asyst-website-cms` (`/home/devel/asyst-website-cms/.pipra.yaml`)
 ```yaml
 version: "1.0"
 
-# 1. Preflight Hooks: Run Prisma migrations and schema synchronization
 preflight:
   - command: "npx prisma generate"
     timeout_sec: 60
@@ -121,14 +136,12 @@ preflight:
     timeout_sec: 120
     continue_on_error: false
 
-# 2. Container Build Configuration
 build:
   dockerfile: "Dockerfile"
   context: "."
   args:
     NODE_ENV: "production"
 
-# 3. Staging Verification: Verify /login and public news API on port 3002
 verification:
   - command: "curl -fsS --retry 10 --retry-delay 2 http://127.0.0.1:3002/login -o /dev/null"
     timeout_sec: 60
@@ -137,7 +150,6 @@ verification:
     timeout_sec: 30
     continue_on_error: false
 
-# 4. Post-Cutover Verification: Verify live CMS on port 3000
 post_cutover:
   - command: "curl -fsS http://127.0.0.1:3000/login -o /dev/null"
     timeout_sec: 30
@@ -146,122 +158,89 @@ post_cutover:
 
 ---
 
-## 5. Pipra Control Plane Database Configuration (SQL Seed)
+## 6. Standalone Installation & Systemd Runbook (`172.25.192.11`)
 
-To register the target host `172.25.192.11` and both applications in Pipra's database (`pipra.db`), execute the following migration:
+### Step 1: Install Node.js 22 via Rocky Linux 9 AppStream
+```bash
+echo c9DsZCTXio | sudo -S dnf module reset -y nodejs
+echo c9DsZCTXio | sudo -S dnf module enable -y nodejs:22
+echo c9DsZCTXio | sudo -S dnf install -y nodejs git
+node -v # Verify v22.x.x
+```
 
-```sql
--- 1. Register Remote Target Environment for 172.25.192.11
-INSERT OR IGNORE INTO environments (
-  id, name, display_name, host, ssh_port, ssh_user, auth_type, 
-  created_at, updated_at
-) VALUES (
-  'env_target_192_11',
-  'asyst-v3-dev',
-  'ASYST Website v3 Dev Server (172.25.192.11)',
-  '172.25.192.11',
-  22,
-  'devel',
-  'SSH_PASSWORD',
-  datetime('now'),
-  datetime('now')
-);
+### Step 2: Deploy Pipra Control Plane Codebase
+```bash
+# Clone directly from GitHub
+cd /home/devel
+git clone https://github.com/sianggit/pipra.git /home/devel/pipra
+cd /home/devel/pipra
+mkdir -p /home/devel/pipra/data
+chmod 700 /home/devel/pipra/data
+```
 
--- Store encrypted password in Pipra Vault for 172.25.192.11 (user: devel, pass: c9DsZCTXio)
--- (Handled automatically by Pipra CryptoVault service during environment creation)
+### Step 3: Configure Systemd Service Unit (`/etc/systemd/system/pipra.service`)
+```ini
+[Unit]
+Description=Pipra Pipeline & Release Engineering Control Plane
+After=network.target docker.service
+Wants=docker.service
 
--- 2. Register Application: asyst-website
-INSERT OR IGNORE INTO applications (
-  id, name, slug, git_repo_url, default_branch, permitted_branches, 
-  dockerfile, default_host_app_dir, default_prod_port, default_staging_port, created_at, updated_at
-) VALUES (
-  'app_asyst_website',
-  'ASYST Corporate Website v3',
-  'asyst-website',
-  'git@github.com:asyst-git/asyst-website.git',
-  'master',
-  'master, main, develop, release/*',
-  'Dockerfile',
-  '/home/devel/asyst-website',
-  80,
-  3001,
-  datetime('now'),
-  datetime('now')
-);
+[Service]
+Type=simple
+User=devel
+Group=devel
+WorkingDirectory=/home/devel/pipra
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=4200
+Environment=PIPRA_DATA_DIR=/home/devel/pipra/data
+LimitNOFILE=65535
 
-INSERT OR IGNORE INTO application_environments (
-  id, application_id, name, display_name, host_port, staging_port, 
-  app_dir, env_file, is_production, created_at, updated_at
-) VALUES (
-  'appenv_asyst_web_v3',
-  'app_asyst_website',
-  'devel',
-  'Development & Staging (172.25.192.11)',
-  80,
-  3001,
-  '/home/devel/asyst-website',
-  '.env.prd',
-  0,
-  datetime('now'),
-  datetime('now')
-);
+[Install]
+WantedBy=multi-user.target
+```
 
--- 3. Register Application: asyst-website-cms
-INSERT OR IGNORE INTO applications (
-  id, name, slug, git_repo_url, default_branch, permitted_branches, 
-  dockerfile, default_host_app_dir, default_prod_port, default_staging_port, created_at, updated_at
-) VALUES (
-  'app_asyst_website_cms',
-  'ASYST Website CMS v3',
-  'asyst-website-cms',
-  'git@github-cms:asyst-git/asyst-website-cms.git',
-  'master',
-  'master, main, develop, release/*',
-  'Dockerfile',
-  '/home/devel/asyst-website-cms',
-  3000,
-  3002,
-  datetime('now'),
-  datetime('now')
-);
+### Step 4: Open Firewall Port `:4200`
+```bash
+echo c9DsZCTXio | sudo -S firewall-cmd --permanent --add-port=4200/tcp
+echo c9DsZCTXio | sudo -S firewall-cmd --reload
+```
 
-INSERT OR IGNORE INTO application_environments (
-  id, application_id, name, display_name, host_port, staging_port, 
-  app_dir, env_file, is_production, created_at, updated_at
-) VALUES (
-  'appenv_asyst_cms_v3',
-  'app_asyst_website_cms',
-  'devel',
-  'Development & Staging (172.25.192.11)',
-  3000,
-  3002,
-  '/home/devel/asyst-website-cms',
-  '.env.production',
-  0,
-  datetime('now'),
-  datetime('now')
-);
+### Step 5: Seed Local Applications Catalog
+Inject local application metadata directly into `/home/devel/pipra/data/pipra.db`:
+- App 1: `asyst-website` (`/home/devel/asyst-website`, Prod Port: `80`, Staging Port: `3001`)
+- App 2: `asyst-website-cms` (`/home/devel/asyst-website-cms`, Prod Port: `3000`, Staging Port: `3002`)
+
+### Step 6: Enable & Start Pipra
+```bash
+echo c9DsZCTXio | sudo -S systemctl daemon-reload
+echo c9DsZCTXio | sudo -S systemctl enable --now pipra
+sudo systemctl status pipra --no-pager
 ```
 
 ---
 
-## 6. Verification Matrix & Scenarios
+## 7. Secure Credentials Generated for `172.25.192.11`
 
-| Scenario ID | Test Case | Target Behavior | Verification Method |
+> [!IMPORTANT]
+> Prototype accounts have been decommissioned. These secure credentials will be provisioned during database initialization:
+
+| Username | Role | Generated Secure Password | Access Scope |
 |---|---|---|---|
-| **SC-01** | SSH Target Connectivity | Pipra test runner connects to `devel@172.25.192.11` via vaulted credentials and verifies `docker info`. | Pipra environment connectivity probe |
-| **SC-02** | Git Workspace State | Both `/home/devel/asyst-website` and `/home/devel/asyst-website-cms` verify clean git worktree with safe directory enabled. | `git status` check via Pipra Stage 2 |
-| **SC-03** | `asyst-website` Blue-Green Cutover | Staging container boots on port `3001`, passes `/` and `/about` probes, atomically switches to live port `80` with zero dropped requests. | Continuous HTTP ping during deployment |
-| **SC-04** | `asyst-website-cms` Prisma Migration | Preflight runs `npx prisma migrate deploy` successfully before containerization; staging boots on `3002` with media volume mounted. | Verify `/app/public/uploads` persistence and DB sync |
-| **SC-05** | Automated Rollback Safety | If staging health probe fails or times out, Pipra aborts cutover, removes staging container, and leaves existing production containers on ports `80` & `3000` completely undisturbed. | Simulated probe failure test |
-| **SC-06** | Cryptographic Provenance | Attestation JSON generated and signed by Pipra platform key, verifiable in UI. | Modal signature verification in Pipra UI |
+| **`admin`** | Platform Administrator | `aSySt_Adm!n2026#w3b` | Full configuration, environment settings, provenance verification |
+| **`operator`** | Deployment Operator | `Op$Web_Asyst#9211` | Trigger blue-green deployments, inspect live telemetry, approve cutovers |
 
 ---
 
-## 7. Execution Runbook
+## 8. Verification Matrix & Scenarios
 
-1. **Step 1:** Create `.pipra.yaml` in local workspace `D:\Anggit Arisa Siwi Pratama\ASYST\Development\js\asyst-website` and push/copy to `172.25.192.11`.
-2. **Step 2:** Create `.pipra.yaml` in local workspace `D:\Anggit Arisa Siwi Pratama\ASYST\Development\js\asyst-website-cms` and push/copy to `172.25.192.11`.
-3. **Step 3:** Seed Pipra database with the SQL configuration registering `172.25.192.11`, `asyst-website`, and `asyst-website-cms`.
-4. **Step 4:** Trigger pilot deployment of `asyst-website` via Pipra UI. Confirm zero-downtime cutover on port `80`.
-5. **Step 5:** Trigger pilot deployment of `asyst-website-cms` via Pipra UI. Confirm Prisma migration and zero-downtime cutover on port `3000`.
+| Scenario ID | Test Case | Target Behavior | Verification Method |
+|---|---|---|---|
+| **SC-01** | Node.js Runtime Installation | Node.js v22 installed and functioning with native `node:sqlite`. | `node -v` on `172.25.192.11` |
+| **SC-02** | Standalone Pipra HTTP Cockpit | Control plane listens on port `4200` and serves 3D landing cockpit with zero errors. | `curl -I http://172.25.192.11:4200/` |
+| **SC-03** | App Catalog Auto-Detection | `asyst-website` and `asyst-website-cms` render in Applications catalog with configured ports. | Inspect `http://172.25.192.11:4200/#/applications` |
+| **SC-04** | `asyst-website` Blue-Green Deploy | Stage 2 git pull, Stage 4 Docker build, Stage 5 staging on `:3001`, health probe passes, atomic cutover to port `:80` with zero dropped requests. | Trigger deploy via UI -> monitor live SSE logs |
+| **SC-05** | `asyst-website-cms` Prisma Migration | Preflight runs `npx prisma migrate deploy`, staging container runs on `:3002` with uploads volume mounted, cutover to port `:3000`. | Inspect database schema & verify uploads persistence |
+| **SC-06** | Sub-Second Rollback Verification | If staging health check fails, pipeline aborts cleanly and leaves live containers on ports `80` & `3000` completely undisturbed. | Simulated probe failure verification |
