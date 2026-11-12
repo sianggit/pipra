@@ -76,6 +76,13 @@ class ApiClient {
     }
   }
 
+  async changePassword(new_password) {
+    return this.request('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ new_password }),
+    });
+  }
+
   // Users & RBAC
   async getUsers() {
     return this.request('/api/users');

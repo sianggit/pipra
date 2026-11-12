@@ -8,9 +8,13 @@ const assert = require('node:assert/strict');
 test('Integration: Prevents conflicting concurrent deployments to the same target', async (t) => {
   const host = 'http://localhost:4200';
 
-  // Check if live server is reachable
+  // Check if live Pipra server is reachable
   try {
-    await fetch(`${host}/api/agents`, { signal: AbortSignal.timeout(1000) });
+    const probe = await fetch(`${host}/api/healthz`, { signal: AbortSignal.timeout(1000) });
+    if (!probe.ok) {
+      t.skip(`Integration test requires running Pipra server at ${host}. Start server with 'npm start' to run full E2E suite.`);
+      return;
+    }
   } catch (err) {
     t.skip(`Integration test requires running Pipra server at ${host}. Start server with 'npm start' to run full E2E suite.`);
     return;

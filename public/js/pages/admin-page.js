@@ -571,6 +571,53 @@ export function renderLoginPage(container) {
 
         const result = await api.login(u, pw);
         state.set({ user: result.user });
+
+        if (result.must_change_password) {
+          openModal({
+            title: 'Mandatory Security Policy: Update Default Password',
+            closable: false,
+            content: `
+              <div style="display: grid; gap: 14px;">
+                <p class="t2" style="font-size: 13px; line-height: 1.5;">
+                  ISO/IEC 27001 compliance requires all default factory passwords to be updated before operational access is granted.
+                </p>
+                <div class="fl">
+                  <label for="new-mandatory-pw">New Secure Password</label>
+                  <input id="new-mandatory-pw" type="password" placeholder="At least 8 characters" class="in" style="width: 100%; height: 36px;" />
+                  <span id="pw-change-err" style="display: none; color: var(--bad); font-size: 12px; margin-top: 4px;"></span>
+                </div>
+              </div>
+            `,
+            confirmText: 'Update & Proceed',
+            confirmClass: 'btn-primary',
+            onConfirm: async () => {
+              const newPw = document.getElementById('new-mandatory-pw')?.value;
+              const errSpan = document.getElementById('pw-change-err');
+              if (!newPw || newPw.length < 8) {
+                if (errSpan) {
+                  errSpan.textContent = 'Password must be at least 8 characters long';
+                  errSpan.style.display = 'block';
+                }
+                return false;
+              }
+              try {
+                await api.changePassword(newPw);
+                state.notifyToast('Password updated successfully. Access granted.', 'success');
+                state.set({ user: { ...result.user, must_change_password: false } });
+                window.location.hash = '#/overview';
+                return true;
+              } catch (changeErr) {
+                if (errSpan) {
+                  errSpan.textContent = changeErr.message;
+                  errSpan.style.display = 'block';
+                }
+                return false;
+              }
+            }
+          });
+          return;
+        }
+
         window.location.hash = '#/overview';
       } catch (err) {
         if (errBox) {

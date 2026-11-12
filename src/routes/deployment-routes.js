@@ -14,6 +14,12 @@ function handleDeploymentRoutes(req, res, pathname, query, body, user) {
 
   // 1. List deployments
   if (req.method === 'GET' && pathname === '/api/deployments') {
+    if (!authService.hasRole(user, ['admin', 'operator', 'viewer'])) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Authentication required to view deployments' }));
+      return true;
+    }
+
     const limit = Math.min(parseInt(query.limit || '50', 10), 100);
     const offset = Math.max(parseInt(query.offset || '0', 10), 0);
     const appFilter = query.app;
@@ -221,6 +227,12 @@ function handleDeploymentRoutes(req, res, pathname, query, body, user) {
   // 3. Deployment Detail
   const detailMatch = pathname.match(/^\/api\/deployments\/([a-zA-Z0-9_\-]+)$/);
   if (req.method === 'GET' && detailMatch) {
+    if (!authService.hasRole(user, ['admin', 'operator', 'viewer'])) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Authentication required to view deployment details' }));
+      return true;
+    }
+
     const deploymentId = detailMatch[1];
     const deployment = db.prepare(`
       SELECT d.*, a.name as app_name, a.display_name as app_display_name, a.repo_url, a.app_dir, a.dockerfile, a.host_port, a.staging_port,

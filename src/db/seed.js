@@ -7,15 +7,31 @@ const crypto = require('node:crypto');
 const logger = require('../utils/logger');
 const config = require('../config');
 
-function hashPassword(password) {
-  const salt = 'pipra_salt_2026';
-  return crypto.scryptSync(password, salt, 32).toString('hex');
+function hashPassword(password, customSalt = null) {
+  const salt = customSalt || crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password, salt, 32).toString('hex');
+  return `scrypt:${salt}:${hash}`;
 }
 
-function verifyPassword(password, hash) {
-  const salt = 'pipra_salt_2026';
-  const computed = crypto.scryptSync(password, salt, 32).toString('hex');
-  return computed === hash;
+function verifyPassword(password, storedHash) {
+  if (!password || !storedHash) return false;
+
+  if (storedHash.startsWith('scrypt:')) {
+    const parts = storedHash.split(':');
+    if (parts.length !== 3) return false;
+    const [, salt, expectedHash] = parts;
+    const computed = crypto.scryptSync(password, salt, 32).toString('hex');
+    const compBuf = Buffer.from(computed, 'hex');
+    const expBuf = Buffer.from(expectedHash, 'hex');
+    return compBuf.length === expBuf.length && crypto.timingSafeEqual(compBuf, expBuf);
+  }
+
+  // Legacy static salt verification (ISO 27001 backward compatibility)
+  const legacySalt = 'pipra_salt_2026';
+  const computed = crypto.scryptSync(password, legacySalt, 32).toString('hex');
+  const compBuf = Buffer.from(computed, 'hex');
+  const storeBuf = Buffer.from(storedHash, 'hex');
+  return compBuf.length === storeBuf.length && crypto.timingSafeEqual(compBuf, storeBuf);
 }
 
 function seedCoreSystem(db) {
@@ -25,8 +41,8 @@ function seedCoreSystem(db) {
   if (!adminExists) {
     logger.info('Seeding default Pipra users (admin, operator, viewer)...');
     const insertUser = db.prepare(`
-      INSERT OR IGNORE INTO users (id, username, password_hash, role, created_at)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO users (id, username, password_hash, role, must_change_password, failed_login_attempts, created_at)
+      VALUES (?, ?, ?, ?, 1, 0, ?)
     `);
 
     insertUser.run('user-admin-1', 'admin', hashPassword('pipra-admin-2026'), 'admin', now);

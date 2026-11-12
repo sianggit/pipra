@@ -33,6 +33,7 @@ export function openModal({
   onConfirm = null,
   cancelText = 'Cancel',
   showCancel = true,
+  closable = true,
   maxWidth = '540px'
 }) {
   closeModal();
@@ -52,15 +53,16 @@ export function openModal({
     <div class="modal-dialog" style="max-width: ${maxWidth};">
       <div class="modal-header">
         <h3 id="modal-title" style="margin: 0; font-size: var(--font-size-lg); font-weight: 600; color: var(--t1);">${escapeHtml(title)}</h3>
+        ${closable ? `
         <button id="modal-close-btn" class="btn btn-ghost btn-sm" aria-label="Close dialog" title="Close">
           ${renderIcon('x', 14)}
-        </button>
+        </button>` : ''}
       </div>
       <div class="modal-body">
         ${renderedBody}
       </div>
       <div class="modal-footer">
-        ${showCancel ? `<button id="modal-cancel-btn" class="btn btn-secondary">${escapeHtml(cancelText)}</button>` : ''}
+        ${showCancel && closable ? `<button id="modal-cancel-btn" class="btn btn-secondary">${escapeHtml(cancelText)}</button>` : ''}
         ${onConfirm ? `<button id="modal-confirm-btn" class="btn ${confirmClass}">${escapeHtml(confirmText)}</button>` : ''}
       </div>
     </div>
@@ -74,8 +76,8 @@ export function openModal({
   const confirmBtn = modalOverlay.querySelector('#modal-confirm-btn');
 
   const handleClose = () => closeModal();
-  if (closeBtn) closeBtn.addEventListener('click', handleClose);
-  if (cancelBtn) cancelBtn.addEventListener('click', handleClose);
+  if (closeBtn && closable) closeBtn.addEventListener('click', handleClose);
+  if (cancelBtn && closable) cancelBtn.addEventListener('click', handleClose);
 
   if (confirmBtn && onConfirm) {
     confirmBtn.addEventListener('click', async () => {
@@ -108,17 +110,21 @@ export function openModal({
     });
   }
 
-  // Backdrop click dismiss
-  modalOverlay.addEventListener('click', (e) => {
-    if (e.target === modalOverlay) closeModal();
-  });
+  // Backdrop click dismiss (only if closable)
+  if (closable) {
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+  }
 
   // WCAG 2.2 AA Tab Focus Trap & Escape Handler
   const focusableSelector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
   const keyHandler = (e) => {
     if (e.key === 'Escape') {
-      e.preventDefault();
-      closeModal();
+      if (closable) {
+        e.preventDefault();
+        closeModal();
+      }
       return;
     }
 

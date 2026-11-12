@@ -90,10 +90,12 @@ function parseJsonBody(req) {
 
 // 3. Create HTTP Server
 const server = http.createServer(async (req, res) => {
-  // CORS & Security Headers
+  // CORS & Security Headers (ISO 27001 A.8.20 / A.8.26)
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self';");
 
   const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = reqUrl.pathname;
@@ -109,9 +111,44 @@ const server = http.createServer(async (req, res) => {
     body = await parseJsonBody(req);
   }
 
-  // --- API ROUTING ---
+  // --- API ROUTING & GATEWAY AUTHENTICATION GUARD ---
   try {
     if (pathname.startsWith('/api/')) {
+      // 1. Public Health Check
+      if (pathname === '/api/healthz') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+        return;
+      }
+
+      // 2. Global API Gateway Authentication Filter (ISO 27001 A.5.15 / A.5.18)
+      const isPublicApi =
+        pathname === '/api/auth/login' ||
+        pathname.startsWith('/api/webhooks/');
+
+      if (!isPublicApi && !user) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Authentication required. Please provide a valid Bearer token or session cookie.' }));
+        return;
+      }
+
+      // 3. First-Boot Password Rotation Barrier (ISO 27001 A.5.17 / A.8.5)
+      if (user && user.must_change_password) {
+        const allowedPasswordChangePaths = [
+          '/api/auth/change-password',
+          '/api/auth/logout',
+          '/api/auth/me',
+        ];
+        if (!allowedPasswordChangePaths.includes(pathname)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            error: 'Password rotation required. You must change your default password before accessing the platform.',
+            must_change_password: true,
+          }));
+          return;
+        }
+      }
+
       if (handleAuthRoutes(req, res, pathname, body, user)) return;
       if (handleWebhookRoutes(req, res, pathname, query, body, user, req.rawBody)) return;
       if (handleAppRoutes(req, res, pathname, query, body, user)) return;

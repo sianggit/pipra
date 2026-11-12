@@ -22,8 +22,37 @@ class AuthService {
       return { success: false, error: 'Invalid credentials' };
     }
 
+    // Check account lockout (ISO 27001 A.8.5)
+    if (user.locked_until) {
+      const lockExpiry = new Date(user.locked_until).getTime();
+      if (Date.now() < lockExpiry) {
+        const remainingMin = Math.ceil((lockExpiry - Date.now()) / 60000);
+        return {
+          success: false,
+          error: `Account locked due to consecutive failed attempts. Try again in ${remainingMin} minute(s).`,
+          locked: true,
+        };
+      }
+    }
+
     if (!verifyPassword(password, user.password_hash)) {
+      const attempts = Number(user.failed_login_attempts || 0) + 1;
+      if (attempts >= 5) {
+        const lockUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        this.db.prepare('UPDATE users SET failed_login_attempts = ?, locked_until = ? WHERE id = ?').run(attempts, lockUntil, user.id);
+        return {
+          success: false,
+          error: 'Account locked due to consecutive failed attempts. Try again in 15 minutes.',
+          locked: true,
+        };
+      }
+      this.db.prepare('UPDATE users SET failed_login_attempts = ? WHERE id = ?').run(attempts, user.id);
       return { success: false, error: 'Invalid credentials' };
+    }
+
+    // Reset failed login attempts on successful authentication
+    if (user.failed_login_attempts > 0 || user.locked_until) {
+      this.db.prepare('UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?').run(user.id);
     }
 
     // Generate token
@@ -38,10 +67,12 @@ class AuthService {
     return {
       success: true,
       token,
+      must_change_password: Boolean(user.must_change_password),
       user: {
         id: user.id,
         username: user.username,
         role: user.role,
+        must_change_password: Boolean(user.must_change_password),
       },
     };
   }
@@ -49,7 +80,7 @@ class AuthService {
   validateSession(token) {
     if (!token) return null;
     const session = this.db.prepare(`
-      SELECT s.*, u.username 
+      SELECT s.*, u.username, u.must_change_password
       FROM sessions s
       JOIN users u ON s.user_id = u.id
       WHERE s.token = ? AND s.expires_at > ?
@@ -61,6 +92,7 @@ class AuthService {
       username: session.username,
       role: session.role,
       token: session.token,
+      must_change_password: Boolean(session.must_change_password),
     };
   }
 
@@ -196,6 +228,32 @@ class AuthService {
 
     // Invalidate and terminate all active sessions for this user (forces re-login)
     this.db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+
+    return { success: true };
+  }
+
+  changePassword(userId, newPassword) {
+    if (!userId) throw new Error('User ID is required');
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+      throw new Error('New password must be at least 8 characters long');
+    }
+
+    const targetUser = this.getUserById(userId);
+    if (!targetUser) {
+      throw new Error(`User not found: ${userId}`);
+    }
+
+    const newHash = hashPassword(newPassword);
+    const now = new Date().toISOString();
+    this.db.prepare(`
+      UPDATE users
+      SET password_hash = ?,
+          must_change_password = 0,
+          password_updated_at = ?,
+          failed_login_attempts = 0,
+          locked_until = NULL
+      WHERE id = ?
+    `).run(newHash, now, userId);
 
     return { success: true };
   }

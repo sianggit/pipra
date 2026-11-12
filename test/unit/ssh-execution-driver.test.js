@@ -49,7 +49,7 @@ test('Sanitizer: isBranchPermitted evaluates exact matches and wildcards dynamic
   assert.strictEqual(isBranchPermitted('not-allowed', JSON.stringify(allowed)), false);
 });
 
-test('ExecutionDriver: resolveSshInvocation handles SSH_PASSWORD authentication', () => {
+test('ExecutionDriver: resolveSshInvocation handles SSH_PASSWORD authentication without CLI arg password leak', () => {
   const password = 'mySecretPassword999';
   const encrypted = cryptoVault.encryptSecret(password);
   const env = {
@@ -63,8 +63,11 @@ test('ExecutionDriver: resolveSshInvocation handles SSH_PASSWORD authentication'
   const invocation = executionDriver.resolveSshInvocation(env, 'docker --version');
   assert.ok(invocation, 'Invocation object returned');
   assert.ok(invocation.bin.includes('plink') || invocation.bin.includes('sshpass'), 'Uses plink or sshpass');
-  assert.ok(invocation.args.includes(password), 'Args include decrypted password');
+  assert.ok(!invocation.args.includes(password), 'Args must NOT leak cleartext password in CLI arguments (ISO 27001 A.8.8 / A.8.20)');
+  assert.ok(invocation.args.includes('-pwfile') || invocation.args.includes('-f'), 'Uses -pwfile or -f flag');
+  assert.ok(typeof invocation.cleanup === 'function', 'Cleanup function must be provided for temp pwfile');
   assert.ok(invocation.args.includes('devel@172.25.230.100'));
+  invocation.cleanup();
 });
 
 test('ExecutionDriver: resolveSshInvocation handles SSH_KEY with temporary key lifecycle', () => {

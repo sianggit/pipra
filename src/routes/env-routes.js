@@ -58,6 +58,12 @@ function handleEnvRoutes(req, res, pathname, query, body, user) {
   // 2. Test Connection endpoint: POST /api/environments/:id/test-connection
   const testMatch = pathname.match(/^\/api\/environments\/([a-zA-Z0-9_\-]+)\/test-connection$/);
   if (req.method === 'POST' && testMatch) {
+    if (!authService.hasRole(user, ['admin', 'operator'])) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Operator or Administrator permissions required to test connectivity' }));
+      return true;
+    }
+
     const envId = testMatch[1];
     let env = db.prepare('SELECT * FROM application_environments WHERE id = ? OR name = ?').get(envId, envId);
     if (!env) {

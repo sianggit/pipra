@@ -85,18 +85,28 @@ class ExecutionDriver {
       }
     }
 
-    // 1. SSH PASSWORD AUTHENTICATION
+    // 1. SSH PASSWORD AUTHENTICATION (Protected via transient 0600 pwfile to prevent CLI inspection - ISO 27001 A.8.8)
     if (authType === 'SSH_PASSWORD') {
       if (!credential) {
         throw new Error(`Environment '${env.name || env.id}' requires SSH_PASSWORD authentication, but no password credential is stored.`);
       }
 
+      const tmpPwPath = path.join(os.tmpdir(), `pipra_pw_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.tmp`);
+      fs.writeFileSync(tmpPwPath, credential + '\n', { mode: 0o600 });
+      if (process.platform !== 'win32') {
+        try { fs.chmodSync(tmpPwPath, 0o600); } catch {}
+      }
+
+      const cleanup = () => {
+        try { fs.unlinkSync(tmpPwPath); } catch {}
+      };
+
       const plink = this.findPlinkPath();
       if (plink) {
         return {
           bin: plink,
-          args: ['-ssh', '-P', port, '-batch', '-pw', credential, `${user}@${host}`, remoteCmd],
-          cleanup: null,
+          args: ['-ssh', '-P', port, '-batch', '-pwfile', tmpPwPath, `${user}@${host}`, remoteCmd],
+          cleanup,
         };
       }
 
@@ -104,11 +114,12 @@ class ExecutionDriver {
       if (sshpass) {
         return {
           bin: sshpass,
-          args: ['-p', credential, 'ssh', '-p', port, '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=5', `${user}@${host}`, remoteCmd],
-          cleanup: null,
+          args: ['-f', tmpPwPath, 'ssh', '-p', port, '-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=5', `${user}@${host}`, remoteCmd],
+          cleanup,
         };
       }
 
+      cleanup();
       throw new Error(`SSH password authentication requires PuTTY (plink.exe on Windows) or sshpass (on Linux). Please install PuTTY or switch to SSH Key authentication.`);
     }
 

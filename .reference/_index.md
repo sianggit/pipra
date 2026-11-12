@@ -52,12 +52,15 @@ YYYY-MM-DD_[Project-or-Context]_[Document-Name]_v[X.X].[ext]
 │       │       ├── 2026-10-31_Execution_Multi-App-Hierarchical-Environments-And-Remote-SSH-Execution-Plan_v1.0.md
 │       │       ├── 2026-11-12_Execution_Page-Transition-And-Deployment-Telemetry-Enhancement_v1.0.md
 │       │       ├── 2026-11-12_Execution_Git-Workspace-Permission-And-SSH-Auth-Remediation_v1.0.md
-│       │       └── 2026-11-12_Execution_ASYST-Website-And-CMS-v3-Pipra-Adoption-Plan_v1.0.md
+│       │       ├── 2026-11-12_Execution_ASYST-Website-And-CMS-v3-Pipra-Adoption-Plan_v1.0.md
+│       │       ├── 2026-11-12_Execution_Pipra-Distribution-Architecture-And-ISO27002-Analysis_v1.0.md
+│       │       └── 2026-11-12_Execution_Pipra-Dual-Track-Distribution-Implementation-Plan_v1.0.md
 │       ├── control-plane/                # API Routes & Database Subsystem
 │       │   ├── api-spec/2026-10-28_Pipra_Control-Plane-API-Spec_v1.0.md
 │       │   └── development-plan/
 │       │       ├── 2026-10-31_Control-Plane_Session-Plan-Clean-Slate-Database-Flush_v1.0.md
-│       │       └── 2026-11-12_Control-Plane_Session-Plan-User-And-Role-Management-RBAC_v1.0.md
+│       │       ├── 2026-11-12_Control-Plane_Session-Plan-User-And-Role-Management-RBAC_v1.0.md
+│       │       └── 2026-11-12_Control-Plane_Session-Plan-Pipra-ISO27001-Security-Hardening-And-Compliance_v1.0.md
 │       └── ui-portal/                    # Frontend Vanilla ES Modules & SSE Hub
 │           └── development-plan/
 │               ├── 2026-10-28_Pipra_UI-Portal-Plan_v1.0.md

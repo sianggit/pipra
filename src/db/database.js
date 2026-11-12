@@ -37,6 +37,10 @@ function initSchema(db) {
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin', 'operator', 'viewer')),
+      must_change_password INTEGER DEFAULT 0,
+      failed_login_attempts INTEGER DEFAULT 0,
+      locked_until TEXT DEFAULT NULL,
+      password_updated_at TEXT DEFAULT NULL,
       created_at TEXT NOT NULL
     );
 
@@ -423,6 +427,33 @@ function initSchema(db) {
         targetDb.exec('ALTER TABLE deployments ADD COLUMN diagnostic_details TEXT;');
       }
     } catch {}
+
+    // Migrate user & audit security columns (ISO 27001 A.8.5, A.5.17, A.8.15)
+    try {
+      const userCols = targetDb.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+      if (!userCols.includes('must_change_password')) {
+        targetDb.exec("ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0;");
+      }
+      if (!userCols.includes('failed_login_attempts')) {
+        targetDb.exec("ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0;");
+      }
+      if (!userCols.includes('locked_until')) {
+        targetDb.exec("ALTER TABLE users ADD COLUMN locked_until TEXT DEFAULT NULL;");
+      }
+      if (!userCols.includes('password_updated_at')) {
+        targetDb.exec("ALTER TABLE users ADD COLUMN password_updated_at TEXT DEFAULT NULL;");
+      }
+
+      const auditCols = targetDb.prepare('PRAGMA table_info(audit_logs)').all().map(c => c.name);
+      if (!auditCols.includes('prev_hash')) {
+        targetDb.exec("ALTER TABLE audit_logs ADD COLUMN prev_hash TEXT DEFAULT NULL;");
+      }
+      if (!auditCols.includes('curr_hash')) {
+        targetDb.exec("ALTER TABLE audit_logs ADD COLUMN curr_hash TEXT DEFAULT NULL;");
+      }
+    } catch (migErr) {
+      logger.warn('User/audit security column migration note:', migErr.message);
+    }
 
     // Auto-sync shadow compatibility records from application_environments to environments
     try {
