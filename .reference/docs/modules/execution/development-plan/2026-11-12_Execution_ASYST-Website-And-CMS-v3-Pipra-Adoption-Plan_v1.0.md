@@ -222,15 +222,52 @@ sudo systemctl status pipra --no-pager
 
 ---
 
-## 7. Secure Credentials Generated for `172.25.192.11`
+## 7. User Role-Based Access Control (RBAC) & Production Credentials
+
+Pipra enforces strict Role-Based Access Control (RBAC) across UI routes, REST API endpoints, and pipeline execution locks. All default/prototype accounts have been decommissioned.
+
+### 7.1 Production User Directory for `172.25.192.11:4200`
 
 > [!IMPORTANT]
-> Prototype accounts have been decommissioned. These secure credentials will be provisioned during database initialization:
+> **Store these credentials securely.** These accounts will be initialized directly into the SQLite database on `172.25.192.11`:
 
-| Username | Role | Generated Secure Password | Access Scope |
-|---|---|---|---|
-| **`admin`** | Platform Administrator | `aSySt_Adm!n2026#w3b` | Full configuration, environment settings, provenance verification |
-| **`operator`** | Deployment Operator | `Op$Web_Asyst#9211` | Trigger blue-green deployments, inspect live telemetry, approve cutovers |
+| Username | Role | Generated Secure Password | Primary Responsibility | Access Scope |
+|---|---|---|---|---|
+| **`admin`** | **Platform Administrator** | `aSySt_Adm!n2026#w3b` | System governance, user management, environment settings, host secrets, and supply-chain SLSA provenance validation. | Full Administrative Root Access |
+| **`operator`** | **Deployment Operator** | `Op$Web_Asyst#9211` | Launching zero-downtime Blue-Green deployments, cutover gate authorization (Two-Person Rule), live telemetry inspection, and emergency rollback. | Deployment & Cutover Operational Control |
+| **`viewer`** | **Read-Only Observer** | `V!ew3r_Asyst2026$Mon` | Monitoring operational status, inspecting deployment history, viewing DORA reliability metrics, and auditing pipeline logs. | Read-Only Observation (Deployment Triggers Disabled) |
+
+---
+
+### 7.2 RBAC Permission & Capability Matrix
+
+| Operational Capability | Admin | Operator | Viewer | Enforcement Mechanism |
+|---|:---:|:---:|:---:|---|
+| **View Dashboard & Telemetry** | ✅ | ✅ | ✅ | Public operational cockpit |
+| **Inspect Deployment History & Logs** | ✅ | ✅ | ✅ | `GET /api/deployments`, `GET /api/deployments/:id/logs` |
+| **View DORA Reliability Metrics** | ✅ | ✅ | ✅ | `GET /api/stats/dora` |
+| **Trigger Blue-Green Deployment** | ✅ | ✅ | ❌ | `POST /api/deployments` (Gated by `canDeploy()` & API middleware) |
+| **Approve Staging Promotion Gate** | ✅ | ✅ | ❌ | `POST /api/deployments/:id/approve` (Two-Person Rule enforced) |
+| **Cancel / Abort Active Pipeline** | ✅ | ✅ | ❌ | `POST /api/deployments/:id/cancel` |
+| **Trigger Emergency Rollback** | ✅ | ✅ | ❌ | `POST /api/deployments/:id/rollback` |
+| **Manage Applications & Environments** | ✅ | ❌ | ❌ | `POST/PUT/DELETE /api/applications`, `/api/environments` |
+| **Manage Users & Credentials** | ✅ | ❌ | ❌ | `GET/POST/PUT/DELETE /api/users` |
+| **Inspect SLSA Cryptographic Keys** | ✅ | ✅ | ❌ | `GET /api/deployments/:id/provenance` |
+
+---
+
+### 7.3 Database Provisioning SQL Script for User Accounts
+```sql
+-- Hash generation: crypto.scryptSync(password, 'pipra_salt_2026', 32).toString('hex')
+-- Seeded into /home/devel/pipra/data/pipra.db on 172.25.192.11
+
+DELETE FROM users WHERE username IN ('admin', 'operator', 'viewer');
+
+INSERT INTO users (id, username, password_hash, role, created_at) VALUES
+('usr_admin_9211', 'admin', '436cb55142748902dc85af5432d16cc51b9f973d43c2d003571fb05f8b90ee9d', 'admin', datetime('now')),
+('usr_ops_9211', 'operator', 'b2eed333480a5f34ccb8f0b6e295c9044a462391534665a1faa1da9c3be37ad7', 'operator', datetime('now')),
+('usr_view_9211', 'viewer', '836db67f5299921b479cd0ceddf37caa590904fe1055b8c6cc6009a1c2def6ef', 'viewer', datetime('now'));
+```
 
 ---
 
