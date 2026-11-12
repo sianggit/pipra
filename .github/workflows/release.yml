@@ -1,0 +1,135 @@
+name: Pipra Dual-Track Enterprise Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # -------------------------------------------------------------
+  # Job 1: Strict ISO 27001 Pre-Flight Quality & Security Gate
+  # -------------------------------------------------------------
+  security-gate:
+    name: ISO 27001 Security Gate & Regression Verification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run Full Test Suite (104+ ISO Security & Integration Tests)
+        run: npm test
+
+  # -------------------------------------------------------------
+  # Job 2: Build & Publish OCI Container to GHCR (Track 2)
+  # -------------------------------------------------------------
+  build-container:
+    name: Build & Push OCI Image (Track 2)
+    needs: security-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.release
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # -------------------------------------------------------------
+  # Job 3: Build & Publish Native Linux RPM Package (Track 1)
+  # -------------------------------------------------------------
+  build-rpm:
+    name: Build & Publish Linux RPM Package (Track 1)
+    needs: security-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Ruby (for FPM)
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+
+      - name: Install FPM & RPM tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y rpm
+          gem install --no-document fpm
+
+      - name: Extract Release Version
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Package RPM Artifact
+        run: |
+          mkdir -p packaging/build/usr/lib/pipra
+          cp -r server.js package.json src public packaging/build/usr/lib/pipra/
+          
+          # Include CLI binary wrapper
+          mkdir -p packaging/build/usr/lib/pipra/bin
+          cp bin/pipra.sh packaging/build/usr/lib/pipra/bin/pipra.sh
+          chmod +x packaging/build/usr/lib/pipra/bin/pipra.sh
+          
+          # Install systemd service unit
+          mkdir -p packaging/build/etc/systemd/system
+          cp packaging/rpm/pipra.service packaging/build/etc/systemd/system/pipra.service
+
+          # Build compliant RPM
+          fpm -s dir -t rpm \
+            -C packaging/build \
+            --name "pipra" \
+            --version "${{ steps.get_version.outputs.VERSION }}" \
+            --iteration "1.el9" \
+            --architecture "x86_64" \
+            --maintainer "DevOps Release Team <devops@example.com>" \
+            --description "Pipra Pipeline & Zero-Downtime Release Control Plane" \
+            --license "Proprietary" \
+            --before-install packaging/rpm/pre-install.sh \
+            --after-install packaging/rpm/post-install.sh \
+            --before-remove packaging/rpm/pre-remove.sh \
+            --package pipra-${{ steps.get_version.outputs.VERSION }}-1.el9.x86_64.rpm
+
+          # Generate SHA256 cryptographic attestation checksum
+          sha256sum pipra-${{ steps.get_version.outputs.VERSION }}-1.el9.x86_64.rpm > SHA256SUMS.txt
+
+      - name: Upload Artifacts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            pipra-*.rpm
+            SHA256SUMS.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

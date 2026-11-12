@@ -1,0 +1,36 @@
+FROM node:22-alpine AS runtime
+
+LABEL org.opencontainers.image.title="Pipra Control Plane" \
+      org.opencontainers.image.description="Pipeline & Release Engineering Platform" \
+      org.opencontainers.image.vendor="Pipra Core Team" \
+      org.opencontainers.image.source="https://github.com/sianggit/pipra"
+
+WORKDIR /app
+
+# Install runtime utilities for deployment execution & health verification
+RUN apk add --no-cache docker-cli git curl bash openssl tzdata
+
+# Install application dependencies and modules
+COPY package*.json ./
+COPY server.js ./
+COPY src/ ./src/
+COPY public/ ./public/
+
+# Configure unprivileged non-root user and persistent directory structure
+RUN mkdir -p /app/data && \
+    addgroup -g 1001 -S pipra && \
+    adduser -u 1001 -S pipra -G pipra && \
+    chown -R pipra:pipra /app
+
+ENV NODE_ENV=production \
+    PORT=4200 \
+    PIPRA_DATA_DIR=/app/data
+
+EXPOSE 4200
+USER pipra
+
+# Healthcheck verified against ISO 27001 whitelisted endpoint
+HEALTHCHECK --interval=15s --timeout=3s --retries=3 \
+  CMD curl -fsS http://localhost:4200/api/healthz || exit 1
+
+CMD ["node", "server.js"]

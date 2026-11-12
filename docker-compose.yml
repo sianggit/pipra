@@ -1,19 +1,24 @@
+version: "3.8"
+
 services:
   pipra:
-    image: ghcr.io/anggit-arisa/pipra:latest
-    container_name: pipra
-    restart: unless-stopped
+    image: ghcr.io/sianggit/pipra:latest
+    container_name: pipra-control-plane
+    restart: always
     ports:
       - "4200:4200"
-    volumes:
-      - pipra_data:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      - PORT=4200
       - NODE_ENV=production
-      - EXEC_MODE=auto
-
-volumes:
-  pipra_data:
-    driver: local
-
+      - PORT=4200
+      - PIPRA_DATA_DIR=/app/data
+      - SESSION_SECRET=${SESSION_SECRET}
+      - MASTER_KEY=${MASTER_KEY}
+      - SIEM_WEBHOOK_URL=${SIEM_WEBHOOK_URL:-}
+      - SIEM_SYSLOG_HOST=${SIEM_SYSLOG_HOST:-}
+    volumes:
+      # Allow Pipra to orchestrate blue-green container lifecycle on the host
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persistent SQLite database and dynamic salt storage
+      - ./data:/app/data
+      # Workspaces containing application repositories and .pipra.yaml specs
+      - /home/devel:/workspaces

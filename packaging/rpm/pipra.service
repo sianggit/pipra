@@ -1,0 +1,24 @@
+[Unit]
+Description=Pipra Pipeline & Release Engineering Control Plane
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=pipra
+Group=pipra
+WorkingDirectory=/usr/lib/pipra
+EnvironmentFile=-/etc/pipra/pipra.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+LimitNOFILE=65535
+
+# ISO 27001 Security Hardening Directives
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
