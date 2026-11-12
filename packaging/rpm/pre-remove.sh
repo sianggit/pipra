@@ -11,3 +11,4 @@ if [ "$1" = "0" ] || [ "$1" = "uninstall" ]; then
 fi
 
 exit 0
+
