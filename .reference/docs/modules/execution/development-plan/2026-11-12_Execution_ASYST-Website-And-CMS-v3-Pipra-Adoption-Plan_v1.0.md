@@ -1,126 +1,69 @@
-# Comprehensive Architecture & Implementation Plan: Seamless Onboarding of ASYST Website & ASYST Website CMS v3 to Pipra Blue-Green Deployment Engine
+# Comprehensive Architecture & Implementation Plan: ASYST Website & ASYST Website CMS v3 Dedicated Dev Server (172.25.192.11) Blue-Green Migration to Pipra
 
 **Document ID:** `.reference/docs/modules/execution/development-plan/2026-11-12_Execution_ASYST-Website-And-CMS-v3-Pipra-Adoption-Plan_v1.0.md`  
-**Module:** Execution & Multi-App Delivery  
+**Module:** Execution & Remote Server Delivery  
+**Target Server:** `172.25.192.11` (`new-web-asyst`, Rocky Linux 9, Kernel `5.14.0-687.10.1.el9_8`)  
+**Target Host User:** `devel` (Password Vaulted)  
 **Target Applications:**  
-1. **`asyst-website`** (Public Corporate Website — Vite / React 18 / Tailwind / Nginx)  
-2. **`asyst-website-cms`** (Corporate Content Management System v3 — Next.js App Router / Prisma / PostgreSQL)  
-**Target Environment:** Development & Staging Server (`172.25.230.100` / Rocky Linux 9)  
-**Reference Manual Script:** `deploy-asyst-web-next.sh` (Legacy Blue-Green Bash)  
+1. **`asyst-website`**: Corporate Public Website (Vite / React 18 / Tailwind / Nginx)  
+   - Local: `D:\Anggit Arisa Siwi Pratama\ASYST\Development\js\asyst-website`  
+   - Host: `/home/devel/asyst-website`  
+2. **`asyst-website-cms`**: Corporate Content Management System v3 (Next.js 15 App Router / Prisma / PostgreSQL)  
+   - Local: `D:\Anggit Arisa Siwi Pratama\ASYST\Development\js\asyst-website-cms`  
+   - Host: `/home/devel/asyst-website-cms`  
+**Reference Scripts Verified on Host:**  
+- `/home/devel/asyst-website/scripts/deploy-asyst-website.sh`  
+- `/home/devel/asyst-website-cms/scripts/deploy-asyst-website-cms.sh`  
 **Status:** PROPOSED & READY FOR USER REVIEW  
 **Date:** 2026-11-12  
 
 ---
 
-## 1. Executive Summary & Objectives
+## 1. Executive Summary & Forensic Audit of `172.25.192.11`
 
-The ASYST engineering team currently relies on manual shell scripts (`deploy-asyst-web-next.sh`) executed over interactive SSH sessions to deploy frontend and CMS workloads. While functional, manual shell executions introduce significant operational risks:
-- Lack of centralized audit trail and delivery governance.
-- Blind execution without sub-second log streaming, diagnostics, or SLSA supply-chain attestations.
-- Risk of shell connection aborts (e.g. SSH dropouts leaving stale staging containers or port deadlocks).
-- Manual secret file handling and absence of role-based approval barriers (Two-Person Rule).
+Live SSH telemetry audit of `devel@172.25.192.11` confirms that both applications are currently running as standalone Docker containers managed via manual bash scripts:
 
-This implementation plan outlines the seamless migration of both **`asyst-website`** and **`asyst-website-cms`** into **Pipra**, transforming the legacy bash script logic into a deterministic, zero-downtime, automated 10-stage blue-green deployment pipeline orchestrated from the web cockpit at:
-
-🌐 **`http://172.25.230.100:4200`**
-
----
-
-## 2. Legacy Bash Script vs. Pipra 10-Stage Pipeline Mapping
-
-Pipra natively implements the exact blue-green deployment lifecycle previously written in `deploy-asyst-web-next.sh`, elevated to an enterprise-grade control plane:
-
-```mermaid
-flowchart TD
-    subgraph Legacy_Manual_Script["Legacy Bash Script (deploy-asyst-web-next.sh)"]
-        S1["Step 1-3: git fetch && git pull"]
-        S2["Step 4: docker build"]
-        S3["Step 5: docker run --name *-staging"]
-        S4["Step 6: curl health loop (15 attempts)"]
-        S5["Step 7-8: rename to backup & run prod"]
-        S6["Step 9: curl prod verification & rollback"]
-    end
-
-    subgraph Pipra_Deterministic_Pipeline["Pipra 10-Stage Deterministic Engine"]
-        P1["Stage 1: QUEUED (Lock acquisition & role verification)"]
-        P2["Stage 2: SOURCE_PULL (Git sync & .pipra.yaml discovery)"]
-        P3["Stage 3: PREFLIGHT (Linting, TypeScript check & DB migrations)"]
-        P4["Stage 4: CONTAINER_BUILD (BuildKit multi-stage Docker build)"]
-        P5["Stage 5: STAGING_SPINUP (Launch Blue/Green staging container)"]
-        P6["Stage 6: HEALTH_PROBES (Sub-second HTTP telemetry assertions)"]
-        P7["Stage 7: PROMOTION_GATE (Interactive Two-Person approval)"]
-        P8["Stage 8: CUTOVER_EXECUTION (Atomic container replacement)"]
-        P9["Stage 9: POST_CUTOVER_VERIFY (Production smoke verification)"]
-        P10["Stage 10: ATTESTATION_FINALIZED (SLSA v0.2 cryptographic signing)"]
-    end
-
-    S1 --> P2
-    S2 --> P4
-    S3 --> P5
-    S4 --> P6
-    S5 --> P8
-    S6 --> P9
+```text
+CONTAINER ID   IMAGE                      COMMAND               STATUS       PORTS                                        NAMES
+7eaad6e5d59b   asyst-website-cms:v3.0.0   "docker-entrypoint…"  Up 9 hours   0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp  asyst-website-cms
+26f3c5648534   asyst-website:v3.0.0       "/docker-entrypoint…" Up 2 days    0.0.0.0:80->3000/tcp, [::]:80->3000/tcp      asyst-website
 ```
 
-### 2.1 1:1 Parameter Mapping Matrix
-
-| Legacy CLI Flag | `deploy-asyst-web-next.sh` Default | Pipra First-Class Attribute | Pipra Database Field | Purpose |
-|---|---|---|---|---|
-| `--branch` | `devel` / `main` | Target Branch | `deployments.branch` | Git branch to synchronize and deploy. |
-| `--tag` | `vX.X.X` / `date +%s` | Release Tag | `deployments.image_tag` | Docker image tag (`asyst-website:<tag>`). |
-| `--name` | `asyst-web` | Container / Slug Name | `applications.slug` / `applications.name` | Production Docker container identifier. |
-| `--port` | `3000` / `8080` | Production Port | `application_environments.host_port` | Live customer-facing host port. |
-| `--staging-port` | `3001` / `8081` | Staging Port | `application_environments.staging_port` | Ephemeral port for pre-cutover verification. |
-| `--env-file` | `.env.production` | Environment File | `application_environments.env_file` | Secret configuration file mounted to build/run. |
-| `--dockerfile` | `Dockerfile.jenkins` / `Dockerfile` | Dockerfile Path | `applications.dockerfile` | Multi-stage Docker recipe in repository root. |
-| `--app-dir` | `/home/devel/asyst-web` | Host App Directory | `application_environments.app_dir` | Absolute target directory containing the git clone. |
-| `--skip-pull` | `false` | Skip Git Pull | `options.skipPull` | Skips remote fetch if re-deploying local commit. |
-| `--verify-local` | `false` | Host Local Verification | `application_environments.enable_local_verification` | Runs local preflight build before containerization. |
+### Objectives:
+1. Transition both applications from manual shell script execution (`deploy-asyst-website.sh` & `deploy-asyst-website-cms.sh`) to Pipra's automated 10-stage Blue-Green deployment engine.
+2. Maintain 100% feature parity with the existing zero-downtime cutover, health check loops, SPA deep-link routing checks, and Prisma database migrations.
+3. Configure Pipra Control Plane (`http://172.25.230.100:4200` or local cockpit) with vaulted SSH credentials (`devel@172.25.192.11`) to orchestrate deployments remotely, providing live SSE terminal logs, 3D execution HUD, and cryptographic SLSA provenance attestation.
 
 ---
 
-## 3. Application Profiles & Architectural Specifications
+## 2. Parameter & Lifecycle Mapping Matrix
 
-### 3.1 Application 1: `asyst-website` (Public Corporate Portal)
+Every procedural step in `deploy-asyst-website.sh` and `deploy-asyst-website-cms.sh` maps 1:1 into Pipra's execution engine:
 
-- **Architecture:** React 18, Vite, TypeScript, Tailwind CSS, Radix UI.
-- **Serving Strategy:** Multi-stage build producing static bundle served via high-performance Nginx reverse-proxy.
-- **Port Allocation:**
-  - Production Port: **`3010`** (Mapped from container port `:3000`)
-  - Staging Port: **`3011`** (Ephemeral staging probe port)
-- **Host Workspace:** `/home/devel/asyst-website`
-- **Permitted Branches:** `main, develop, staging, release/*, hotfix/*`
-- **Dockerfile Modernization:**
-  Update `Dockerfile` to support zero-dependency multi-stage build directly on host:
-  ```dockerfile
-  # Multi-stage Dockerfile for asyst-website
-  FROM node:22-bookworm-slim AS builder
-  WORKDIR /app
-  COPY package*.json ./
-  RUN npm ci
-  COPY . .
-  ARG RUNTIME_ENV=prd
-  ENV RUNTIME_ENV=${RUNTIME_ENV}
-  RUN node ./initialize/index.cjs && npx tsc && npx vite build --mode=${RUNTIME_ENV}
+| Legacy Script Flag | `asyst-website` | `asyst-website-cms` | Pipra Native Stage & Field | Engine Guarantee |
+|---|---|---|---|---|
+| `--branch` | `master` / `main` | `main` / `master` | **Stage 2: SOURCE_PULL** (`branch`) | Authenticated git fetch via host deploy key. |
+| `--tag` | `v3.0.0` / semantic | `v3.0.0` / semantic | **Stage 1 & 4** (`image_tag`) | Tagged as `asyst-website:<tag>` / `asyst-website-cms:<tag>`. |
+| `--name` | `asyst-website` | `asyst-website-cms` | `applications.slug` / `applications.name` | Container identifier. |
+| `--port` | `:80` (or `:3000`) | `:3000` | **Stage 8** (`host_port`) | Live customer-facing host port. |
+| `--staging-port` | `:3001` | `:3002` | **Stage 5 & 6** (`staging_port`) | Non-conflicting ephemeral port for health probes. |
+| `--env-file` | `.env.prd` | `.env.production` | `application_environments.env_file` | Production secrets injected at build/run time. |
+| `--dockerfile` | `Dockerfile` | `Dockerfile` | `applications.dockerfile` | Multi-stage Docker recipe in project root. |
+| `prisma migrate` | N/A | `npx prisma migrate deploy` | **Stage 3: PREFLIGHT** (`.pipra.yaml`) | Automated DB migrations executed before cutover. |
+| Deep-Link Probe | `/about` (SPA route) | `/login` & `/api/public/news`| **Stage 6: HEALTH_PROBES** (`.pipra.yaml`)| Comprehensive HTTP 200/301/302/304 assertions. |
+| Sub-second Cutover| `rename -> backup -> run`| `rename -> backup -> run`| **Stage 8: CUTOVER_EXECUTION** | Atomic container switch with 0.0s downtime. |
+| Auto-Rollback | Re-start backup on fail | Re-start backup on fail | **Stage 9: POST_CUTOVER_VERIFY** | Instant rollback restoration if health check fails. |
 
-  FROM nginx:alpine AS runner
-  COPY ./nginx.conf /etc/nginx/nginx.conf
-  COPY --from=builder /app/dist /usr/share/nginx/apps
-  EXPOSE 3000
-  CMD ["nginx", "-g", "daemon off;"]
-  ```
+---
 
-### 3.2 Application 2: `asyst-website-cms` (Corporate CMS v3)
+## 3. Host Port & Network Allocation Matrix (`172.25.192.11`)
 
-- **Architecture:** Next.js 15 App Router, React 19, TypeScript, Prisma ORM, PostgreSQL.
-- **Runtime Strategy:** Node.js 22 standalone production server with Prisma database client.
-- **Port Allocation:**
-  - Production Port: **`3020`** (Mapped from container port `:3000`)
-  - Staging Port: **`3021`** (Ephemeral staging probe port)
-- **Host Workspace:** `/home/devel/asyst-website-cms`
-- **Persistent Data & Uploads Volume:**
-  - Host directory `/home/devel/asyst-website-cms/uploads` mounted into container at `/app/public/uploads` to preserve media library across blue-green container replacements.
-- **Preflight Requirement:** Database migration check (`npx prisma migrate deploy`) during preflight stage.
+To guarantee zero port collision between the two workloads during concurrent or staggered blue-green cutovers:
+
+| Application | Container Name | Production Port | Staging Port (Blue/Green) | Target Workspace | Volume Mounts & Flags |
+|---|---|---|---|---|---|
+| **ASYST Website v3** | `asyst-website` | **`80`** (`:80->3000`) | **`3001`** (`:3001->3000`) | `/home/devel/asyst-website` | Ephemeral (Static Nginx SPA) |
+| **ASYST Website CMS v3**| `asyst-website-cms`| **`3000`** (`:3000->3000`)| **`3002`** (`:3002->3000`) | `/home/devel/asyst-website-cms`| `-v /home/devel/asyst-website-cms/uploads:/app/public/uploads`<br>`-v /home/devel/asyst-website-cms/prisma.config.ts:/app/prisma.config.ts`<br>`--add-host=host.docker.internal:host-gateway` |
 
 ---
 
@@ -128,41 +71,48 @@ flowchart TD
 
 ### 4.1 Declarative Spec for `asyst-website` (`/home/devel/asyst-website/.pipra.yaml`)
 
+Commit this file to `D:\Anggit Arisa Siwi Pratama\ASYST\Development\js\asyst-website\.pipra.yaml` and `/home/devel/asyst-website/.pipra.yaml`:
+
 ```yaml
 version: "1.0"
 
-# Preflight: Ensure clean linting and types before Docker containerization
+# 1. Preflight Hooks: Verify build readiness
 preflight:
   - command: "npm run lint"
     timeout_sec: 120
     continue_on_error: true
 
-# Build specification
+# 2. Container Build Configuration
 build:
   dockerfile: "Dockerfile"
   context: "."
   args:
-    RUNTIME_ENV: "prd"
+    env: ""
 
-# Staging verification: Probe HTTP health on ephemeral staging port
+# 3. Staging Verification: Automated root and SPA deep-link routing checks on port 3001
 verification:
-  - command: "curl -fsS --retry 5 --retry-delay 2 http://127.0.0.1:3011/ -o /dev/null"
-    timeout_sec: 45
+  - command: "curl -fsS --retry 8 --retry-delay 2 http://127.0.0.1:3001/ -o /dev/null"
+    timeout_sec: 30
+    continue_on_error: false
+  - command: "curl -fsS --retry 5 --retry-delay 2 http://127.0.0.1:3001/about -o /dev/null"
+    timeout_sec: 30
     continue_on_error: false
 
-# Post-cutover verification: Confirm production route health
+# 4. Post-Cutover Verification: Verify live port 80 health
 post_cutover:
-  - command: "curl -fsS http://127.0.0.1:3010/ -o /dev/null"
+  - command: "curl -fsS http://127.0.0.1:80/ -o /dev/null"
     timeout_sec: 30
     continue_on_error: true
 ```
 
 ### 4.2 Declarative Spec for `asyst-website-cms` (`/home/devel/asyst-website-cms/.pipra.yaml`)
 
+Commit this file to `D:\Anggit Arisa Siwi Pratama\ASYST\Development\js\asyst-website-cms\.pipra.yaml` and `/home/devel/asyst-website-cms/.pipra.yaml`:
+
 ```yaml
 version: "1.0"
 
-# Preflight: Automated Prisma schema migration before container build
+# 1. Preflight Hooks: Run Prisma migrations and schema synchronization
 preflight:
   - command: "npx prisma generate"
     timeout_sec: 60
@@ -171,78 +121,92 @@ preflight:
     timeout_sec: 120
     continue_on_error: false
 
-# Build specification
+# 2. Container Build Configuration
 build:
   dockerfile: "Dockerfile"
   context: "."
   args:
     NODE_ENV: "production"
 
-# Staging verification: Probe CMS health endpoint on port 3021
+# 3. Staging Verification: Verify /login and public news API on port 3002
 verification:
-  - command: "curl -fsS --retry 8 --retry-delay 2 http://127.0.0.1:3021/ -o /dev/null"
+  - command: "curl -fsS --retry 10 --retry-delay 2 http://127.0.0.1:3002/login -o /dev/null"
     timeout_sec: 60
     continue_on_error: false
+  - command: "curl -fsS --retry 5 --retry-delay 2 http://127.0.0.1:3002/api/public/news -o /dev/null"
+    timeout_sec: 30
+    continue_on_error: false
 
-# Post-cutover verification: Confirm live CMS portal is operational
+# 4. Post-Cutover Verification: Verify live CMS on port 3000
 post_cutover:
-  - command: "curl -fsS http://127.0.0.1:3020/ -o /dev/null"
+  - command: "curl -fsS http://127.0.0.1:3000/login -o /dev/null"
     timeout_sec: 30
     continue_on_error: true
 ```
 
 ---
 
-## 5. Host Server Port & Volume Topology Matrix (`172.25.230.100`)
+## 5. Pipra Control Plane Database Configuration (SQL Seed)
 
-| Subsystem | Container Name | Production Port | Staging Port | Workspace Directory | Persistent Volumes |
-|---|---|---|---|---|---|
-| **Pipra Control Plane** | `pipra` (Systemd) | `4200` | N/A | `/home/devel/pipra` | `/home/devel/pipra/data` |
-| **ASDP DIMS Frontend** | `asdp-dims-fe` | `3000` | `3001` | `/home/devel/asdp-dims-fe` | Ephemeral |
-| **ASYST Website** | `asyst-website` | `3010` | `3011` | `/home/devel/asyst-website` | Ephemeral |
-| **ASYST Website CMS v3**| `asyst-website-cms` | `3020` | `3021` | `/home/devel/asyst-website-cms`| `-v /home/devel/asyst-website-cms/uploads:/app/public/uploads` |
-
----
-
-## 6. Pipra Catalog Registration (Database Seed & SQL Setup)
-
-To register both applications in Pipra's SQLite database (`/home/devel/pipra/data/pipra.db`), execute the following automated SQL migration:
+To register the target host `172.25.192.11` and both applications in Pipra's database (`pipra.db`), execute the following migration:
 
 ```sql
--- 1. Register asyst-website
+-- 1. Register Remote Target Environment for 172.25.192.11
+INSERT OR IGNORE INTO environments (
+  id, name, display_name, host, ssh_port, ssh_user, auth_type, 
+  created_at, updated_at
+) VALUES (
+  'env_target_192_11',
+  'asyst-v3-dev',
+  'ASYST Website v3 Dev Server (172.25.192.11)',
+  '172.25.192.11',
+  22,
+  'devel',
+  'SSH_PASSWORD',
+  datetime('now'),
+  datetime('now')
+);
+
+-- Store encrypted password in Pipra Vault for 172.25.192.11 (user: devel, pass: c9DsZCTXio)
+-- (Handled automatically by Pipra CryptoVault service during environment creation)
+
+-- 2. Register Application: asyst-website
 INSERT OR IGNORE INTO applications (
   id, name, slug, git_repo_url, default_branch, permitted_branches, 
   dockerfile, default_host_app_dir, default_prod_port, default_staging_port, created_at, updated_at
 ) VALUES (
   'app_asyst_website',
-  'ASYST Corporate Website',
+  'ASYST Corporate Website v3',
   'asyst-website',
   'git@github.com:asyst-git/asyst-website.git',
-  'main',
-  'main, develop, staging, release/*',
+  'master',
+  'master, main, develop, release/*',
   'Dockerfile',
   '/home/devel/asyst-website',
-  3010,
-  3011,
+  80,
+  3001,
   datetime('now'),
   datetime('now')
 );
 
--- Environments for asyst-website
 INSERT OR IGNORE INTO application_environments (
   id, application_id, name, display_name, host_port, staging_port, 
   app_dir, env_file, is_production, created_at, updated_at
-) VALUES 
-(
-  'env_asyst_web_devel', 'app_asyst_website', 'devel', 'Development',
-  3010, 3011, '/home/devel/asyst-website', '.env.dev', 0, datetime('now'), datetime('now')
-),
-(
-  'env_asyst_web_prod', 'app_asyst_website', 'prod', 'Production',
-  3010, 3011, '/home/devel/asyst-website', '.env.prd', 1, datetime('now'), datetime('now')
+) VALUES (
+  'appenv_asyst_web_v3',
+  'app_asyst_website',
+  'devel',
+  'Development & Staging (172.25.192.11)',
+  80,
+  3001,
+  '/home/devel/asyst-website',
+  '.env.prd',
+  0,
+  datetime('now'),
+  datetime('now')
 );
 
--- 2. Register asyst-website-cms
+-- 3. Register Application: asyst-website-cms
 INSERT OR IGNORE INTO applications (
   id, name, slug, git_repo_url, default_branch, permitted_branches, 
   dockerfile, default_host_app_dir, default_prod_port, default_staging_port, created_at, updated_at
@@ -250,80 +214,54 @@ INSERT OR IGNORE INTO applications (
   'app_asyst_website_cms',
   'ASYST Website CMS v3',
   'asyst-website-cms',
-  'git@github.com:asyst-git/asyst-website-cms.git',
-  'main',
-  'main, develop, staging, release/*',
+  'git@github-cms:asyst-git/asyst-website-cms.git',
+  'master',
+  'master, main, develop, release/*',
   'Dockerfile',
   '/home/devel/asyst-website-cms',
-  3020,
-  3021,
+  3000,
+  3002,
   datetime('now'),
   datetime('now')
 );
 
--- Environments for asyst-website-cms
 INSERT OR IGNORE INTO application_environments (
   id, application_id, name, display_name, host_port, staging_port, 
   app_dir, env_file, is_production, created_at, updated_at
-) VALUES 
-(
-  'env_asyst_cms_devel', 'app_asyst_website_cms', 'devel', 'Development',
-  3020, 3021, '/home/devel/asyst-website-cms', '.env.development', 0, datetime('now'), datetime('now')
-),
-(
-  'env_asyst_cms_prod', 'app_asyst_website_cms', 'prod', 'Production',
-  3020, 3021, '/home/devel/asyst-website-cms', '.env.production', 1, datetime('now'), datetime('now')
+) VALUES (
+  'appenv_asyst_cms_v3',
+  'app_asyst_website_cms',
+  'devel',
+  'Development & Staging (172.25.192.11)',
+  3000,
+  3002,
+  '/home/devel/asyst-website-cms',
+  '.env.production',
+  0,
+  datetime('now'),
+  datetime('now')
 );
 ```
 
 ---
 
-## 7. Step-by-Step Rollout Runbook
-
-### Phase 1: Host Directory & SSH Preparation (`172.25.230.100`)
-1. Clone `asyst-website` and `asyst-website-cms` into `/home/devel/`:
-   ```bash
-   cd /home/devel
-   git clone git@github.com:asyst-git/asyst-website.git /home/devel/asyst-website
-   git clone git@github.com:asyst-git/asyst-website-cms.git /home/devel/asyst-website-cms
-   ```
-2. Verify ownership and git safe directory:
-   ```bash
-   sudo chown -R devel:devel /home/devel/asyst-website /home/devel/asyst-website-cms
-   git config --global --add safe.directory /home/devel/asyst-website
-   git config --global --add safe.directory /home/devel/asyst-website-cms
-   ```
-3. Prepare persistent uploads directory for CMS:
-   ```bash
-   mkdir -p /home/devel/asyst-website-cms/uploads
-   chmod 775 /home/devel/asyst-website-cms/uploads
-   ```
-
-### Phase 2: Inject Declarative Specs (`.pipra.yaml`)
-1. Commit `.pipra.yaml` to `asyst-website` (Section 4.1).
-2. Commit `.pipra.yaml` to `asyst-website-cms` (Section 4.2).
-
-### Phase 3: Seed Pipra Catalog & Reload Service
-1. Run the database seed SQL (Section 6) against `/home/devel/pipra/data/pipra.db`.
-2. Reload `pipra.service` (`systemctl restart pipra`).
-
-### Phase 4: Operational Verification via UI
-1. Navigate to **Applications** (`http://172.25.230.100:4200/#/applications`):
-   - Confirm **ASYST Corporate Website** and **ASYST Website CMS v3** cards are visible with correct ports (`:3010`, `:3020`).
-2. Trigger test development deployment via 3-step wizard (`/#/deploy`).
-3. Observe live SSE logs, 3D execution hero, staging probes on `:3011` / `:3021`, and zero-downtime cutover.
-4. Verify cryptographic SLSA provenance attestation generated upon completion.
-
----
-
-## 8. Verification Matrix & Scenarios
+## 6. Verification Matrix & Scenarios
 
 | Scenario ID | Test Case | Target Behavior | Verification Method |
 |---|---|---|---|
-| **SC-01** | App Catalog Discovery | Both applications render in Pipra UI with environments, branch filters, and correct ports. | Inspect `/#/applications` |
-| **SC-02** | Git Sync & Branch Policy | Pipra fetches latest commits via user `devel` deploy key without exit code 255 warnings. | Stage 2 log check |
-| **SC-03** | Spec Parsing & Preflight | `.pipra.yaml` discovered; preflight hooks (`lint` / `prisma migrate`) run cleanly. | Stage 2 & 3 inspection |
-| **SC-04** | Blue-Green Isolation | Staging container spins up on `:3011` / `:3021` without interrupting existing running containers. | `docker ps` during Stage 5 |
-| **SC-05** | Atomic Cutover | When staging health check passes, port cutover completes in < 1 second with 0 dropped HTTP requests. | Continuous curl loop during deploy |
-| **SC-06** | Automated Rollback | Simulated staging failure automatically aborts pipeline, cleans up staging, and preserves previous live container untouched. | Inject failing probe -> verify live traffic intact |
-| **SC-07** | SLSA Provenance | SLSA Level 2 digital signature generated and verifiable via modal in UI. | Click "SLSA Attested" badge in detail page |
+| **SC-01** | SSH Target Connectivity | Pipra test runner connects to `devel@172.25.192.11` via vaulted credentials and verifies `docker info`. | Pipra environment connectivity probe |
+| **SC-02** | Git Workspace State | Both `/home/devel/asyst-website` and `/home/devel/asyst-website-cms` verify clean git worktree with safe directory enabled. | `git status` check via Pipra Stage 2 |
+| **SC-03** | `asyst-website` Blue-Green Cutover | Staging container boots on port `3001`, passes `/` and `/about` probes, atomically switches to live port `80` with zero dropped requests. | Continuous HTTP ping during deployment |
+| **SC-04** | `asyst-website-cms` Prisma Migration | Preflight runs `npx prisma migrate deploy` successfully before containerization; staging boots on `3002` with media volume mounted. | Verify `/app/public/uploads` persistence and DB sync |
+| **SC-05** | Automated Rollback Safety | If staging health probe fails or times out, Pipra aborts cutover, removes staging container, and leaves existing production containers on ports `80` & `3000` completely undisturbed. | Simulated probe failure test |
+| **SC-06** | Cryptographic Provenance | Attestation JSON generated and signed by Pipra platform key, verifiable in UI. | Modal signature verification in Pipra UI |
+
+---
+
+## 7. Execution Runbook
+
+1. **Step 1:** Create `.pipra.yaml` in local workspace `D:\Anggit Arisa Siwi Pratama\ASYST\Development\js\asyst-website` and push/copy to `172.25.192.11`.
+2. **Step 2:** Create `.pipra.yaml` in local workspace `D:\Anggit Arisa Siwi Pratama\ASYST\Development\js\asyst-website-cms` and push/copy to `172.25.192.11`.
+3. **Step 3:** Seed Pipra database with the SQL configuration registering `172.25.192.11`, `asyst-website`, and `asyst-website-cms`.
+4. **Step 4:** Trigger pilot deployment of `asyst-website` via Pipra UI. Confirm zero-downtime cutover on port `80`.
+5. **Step 5:** Trigger pilot deployment of `asyst-website-cms` via Pipra UI. Confirm Prisma migration and zero-downtime cutover on port `3000`.
