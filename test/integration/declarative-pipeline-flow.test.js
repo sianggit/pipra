@@ -21,6 +21,9 @@ describe('Integration: Declarative Pipeline Specification Flow', () => {
     db = getDatabase();
     testAppDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pipra_declarative_repo_'));
 
+    // Create a minimal dummy Dockerfile so Docker daemon build succeeds in containerized CI environments
+    fs.writeFileSync(path.join(testAppDir, 'Dockerfile'), 'FROM alpine:latest\nCMD ["echo", "pipeline-test"]\n', 'utf-8');
+
     // Insert test application
     db.prepare(`
       INSERT OR REPLACE INTO applications (
