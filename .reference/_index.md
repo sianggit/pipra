@@ -54,7 +54,8 @@ YYYY-MM-DD_[Project-or-Context]_[Document-Name]_v[X.X].[ext]
 │       │       ├── 2026-11-12_Execution_Git-Workspace-Permission-And-SSH-Auth-Remediation_v1.0.md
 │       │       ├── 2026-11-12_Execution_ASYST-Website-And-CMS-v3-Pipra-Adoption-Plan_v1.0.md
 │       │       ├── 2026-11-12_Execution_Pipra-Distribution-Architecture-And-ISO27002-Analysis_v1.0.md
-│       │       └── 2026-11-12_Execution_Pipra-Dual-Track-Distribution-Implementation-Plan_v1.0.md
+│       │       ├── 2026-11-12_Execution_Pipra-Dual-Track-Distribution-Implementation-Plan_v1.0.md
+│       │       └── 2026-11-13_Execution_Pipra-Live-Spec-Detection-And-AI-RCA-Enhancement-Plan_v1.0.md
 │       ├── control-plane/                # API Routes & Database Subsystem
 │       │   ├── api-spec/2026-10-28_Pipra_Control-Plane-API-Spec_v1.0.md
 │       │   └── development-plan/

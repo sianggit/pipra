@@ -274,7 +274,15 @@ class DeploymentRunner {
           pipelineSpec = parseResult.spec;
           db.prepare('UPDATE deployments SET pipeline_spec = ? WHERE id = ?').run(JSON.stringify(pipelineSpec), deploymentId);
           onLog('info', `Declarative spec active (v${pipelineSpec.version}): ${pipelineSpec.preflight.length} preflight hook(s), ${pipelineSpec.verification.length} staging verification hook(s), ${pipelineSpec.post_cutover.length} post-cutover hook(s).`);
-          logStream.broadcast(deploymentId, 'pipeline_spec_loaded', { deploymentId, spec: pipelineSpec });
+          logStream.broadcast(deploymentId, 'pipeline_spec_loaded', {
+            deploymentId,
+            fileName: specDiscovery.fileName,
+            version: pipelineSpec.version,
+            preflightCount: pipelineSpec.preflight.length,
+            verificationCount: pipelineSpec.verification.length,
+            postCutoverCount: pipelineSpec.post_cutover.length,
+            spec: pipelineSpec
+          });
         } else {
           onLog('info', `No .pipra.yaml or .pipra.json found in repository. Using default execution policies.`);
         }

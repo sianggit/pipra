@@ -16,6 +16,10 @@ const ERROR_CATEGORIES = {
   HEALTHCHECK_TIMEOUT: 'HEALTHCHECK_TIMEOUT',
   PERMISSION_DENIED: 'PERMISSION_DENIED',
   SYNTAX_ERROR: 'SYNTAX_ERROR',
+  COMMAND_NOT_FOUND: 'COMMAND_NOT_FOUND',
+  GIT_DUBIOUS_OWNERSHIP: 'GIT_DUBIOUS_OWNERSHIP',
+  DOCKER_SOCKET_EACCES: 'DOCKER_SOCKET_EACCES',
+  PRISMA_MIGRATION_ERROR: 'PRISMA_MIGRATION_ERROR',
   UNKNOWN: 'UNKNOWN_ERROR',
 };
 
@@ -123,7 +127,55 @@ function analyzeHeuristic(context) {
     };
   }
 
-  // 3. Permission Denied / EACCES
+  // 2.1 Git dubious ownership error
+  if (/detected dubious ownership in repository at ['"]?([^'"\n]+)['"]?/i.test(logText)) {
+    const dirMatch = logText.match(/detected dubious ownership in repository at ['"]?([^'"\n]+)['"]?/i);
+    const repoPath = dirMatch ? dirMatch[1].trim() : 'target directory';
+    return {
+      summary: `Git dubious ownership detected: User 'pipra' does not own ${repoPath}.`,
+      category: ERROR_CATEGORIES.GIT_DUBIOUS_OWNERSHIP,
+      root_cause: `The git repository workspace is owned by another host user. Git security blocks execution to prevent privilege escalation.`,
+      probable_file: '.git or git global configuration',
+      suggested_fix: `git config --system --add safe.directory '*' || git config --global --add safe.directory ${repoPath}`,
+    };
+  }
+
+  // 2.2 Command not found / ENOENT (e.g. spawn npx ENOENT, spawn docker ENOENT)
+  if (/spawn\s+([^\s]+)\s+ENOENT|command not found:\s*([^\s\n]+)|no\s+([^\s]+)\s+in\s+\(/i.test(logText)) {
+    const cmdMatch = logText.match(/spawn\s+([^\s]+)\s+ENOENT|command not found:\s*([^\s\n]+)|no\s+([^\s]+)\s+in\s+\(/i);
+    const missingCmd = cmdMatch ? (cmdMatch[1] || cmdMatch[2] || cmdMatch[3]) : 'required tool';
+    return {
+      summary: `Command not found: '${missingCmd}' is not installed or missing from system PATH.`,
+      category: ERROR_CATEGORIES.COMMAND_NOT_FOUND,
+      root_cause: `The execution driver attempted to spawn '${missingCmd}', but the binary was not found in the environment PATH of the Pipra service.`,
+      probable_file: 'pipra.service Environment PATH or host package installation',
+      suggested_fix: `which ${missingCmd} || sudo dnf install -y ${missingCmd} (or remove host preflight hook and build inside Docker)`,
+    };
+  }
+
+  // 2.3 Docker socket or daemon permission error (e.g. spawn docker EACCES)
+  if (/spawn docker EACCES|permission denied.*docker\.sock|dial unix \/var\/run\/docker\.sock: connect: permission denied/i.test(logText)) {
+    return {
+      summary: 'Docker daemon permission denied: Pipra service cannot access Docker socket.',
+      category: ERROR_CATEGORIES.DOCKER_SOCKET_EACCES,
+      root_cause: 'The unprivileged service user \'pipra\' is not a member of the \'docker\' group or lacks access to /var/run/docker.sock.',
+      probable_file: '/var/run/docker.sock or /etc/group',
+      suggested_fix: 'sudo usermod -aG docker pipra && sudo chmod 660 /var/run/docker.sock && sudo systemctl restart pipra',
+    };
+  }
+
+  // 2.4 Prisma migration or generation error
+  if (/P300|P301|P1001|Can't reach database server|prisma migrate deploy failed/i.test(logText)) {
+    return {
+      summary: 'Prisma database connection or migration failed.',
+      category: ERROR_CATEGORIES.PRISMA_MIGRATION_ERROR,
+      root_cause: 'Prisma CLI could not connect to the database or an existing schema migration failed validation.',
+      probable_file: 'prisma/schema.prisma or .env DATABASE_URL',
+      suggested_fix: 'Verify DATABASE_URL in .env and ensure PostgreSQL/MariaDB container is reachable on host network.',
+    };
+  }
+
+  // 3. General Permission Denied / EACCES
   if (/EACCES|permission denied|operation not permitted/i.test(logText)) {
     return {
       summary: 'Filesystem permission denied during execution.',

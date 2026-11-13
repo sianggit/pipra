@@ -16,6 +16,8 @@ export class DeploymentEventStream {
       finished: options.onFinished ? [options.onFinished] : [],
       approval_requested: options.onApprovalRequested ? [options.onApprovalRequested] : [],
       approved: options.onApproved ? [options.onApproved] : [],
+      pipeline_spec_loaded: options.onPipelineSpecLoaded ? [options.onPipelineSpecLoaded] : [],
+      diagnostic_ready: options.onDiagnosticReady ? [options.onDiagnosticReady] : [],
     };
     if (options.onError) {
       this.onErrorCallback = options.onError;
@@ -29,7 +31,10 @@ export class DeploymentEventStream {
     const url = `/api/deployments/${this.deploymentId}/events`;
     this.eventSource = new EventSource(url);
 
-    const eventNames = ['init', 'stage', 'log', 'probe', 'status', 'finished', 'approval_requested', 'approved'];
+    const eventNames = [
+      'init', 'stage', 'log', 'probe', 'status', 'finished', 
+      'approval_requested', 'approved', 'pipeline_spec_loaded', 'diagnostic_ready'
+    ];
     for (const evt of eventNames) {
       this.eventSource.addEventListener(evt, (e) => {
         if (evt === 'init') this.reconnectAttempts = 0;
