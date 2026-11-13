@@ -9,6 +9,8 @@ const logger = require('../utils/logger');
 class CutoverManager {
   async executeCutover({
     env,
+    appDir,
+    envFile,
     containerName,
     backupName,
     imageName,
@@ -24,6 +26,7 @@ class CutoverManager {
     const fullTag = `${imageName}:${imageTag}`;
     const hPort = (env && env.host_port) ? env.host_port : hostPort;
     const cPort = (env && env.container_port) ? env.container_port : (containerPort || 3000);
+    const envFileArgs = executionDriver.resolveEnvFileArgs(env, appDir, envFile, onLog);
 
     if (executionDriver.dockerAvailable || executionDriver.isTargetRemote(env)) {
       // 1. Check if production container is currently running
@@ -73,6 +76,7 @@ class CutoverManager {
           '--restart', 'unless-stopped',
           '--name', containerName,
           '-e', 'NODE_ENV=production',
+          ...envFileArgs,
           '-p', `${hPort}:${cPort}`,
           fullTag,
         ],

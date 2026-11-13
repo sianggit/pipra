@@ -367,7 +367,9 @@ class DeploymentRunner {
         db.prepare('UPDATE deployments SET staging_container_name = ? WHERE id = ?').run(stagingContainerName, deploymentId);
 
         await executionDriver.runStagingContainer({
-          env: { ...env, staging_port: stagingPort, container_port: containerPort },
+          env: { ...env, app_dir: appDir, env_file: envFile, staging_port: stagingPort, container_port: containerPort },
+          appDir,
+          envFile,
           imageName: app.image_name,
           imageTag: deployment.image_tag,
           containerName: stagingContainerName,
@@ -513,7 +515,9 @@ class DeploymentRunner {
         db.prepare('UPDATE deployments SET backup_container_name = ? WHERE id = ?').run(backupContainerName, deploymentId);
 
         await cutoverManager.executeCutover({
-          env: { ...env, host_port: hostPort, container_port: containerPort },
+          env: { ...env, app_dir: appDir, env_file: envFile, host_port: hostPort, container_port: containerPort },
+          appDir,
+          envFile,
           containerName: prodContainerName,
           backupName: backupContainerName,
           imageName: app.image_name,

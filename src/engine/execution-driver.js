@@ -347,15 +347,38 @@ class ExecutionDriver {
     return { imageId: 'sha256:8f72a4c9b1d0e512' };
   }
 
-  async runStagingContainer({ env, imageName, imageTag, containerName, stagingPort, containerPort, onLog, abortSignal }) {
+  /**
+   * Resolves --env-file Docker CLI arguments if an environment file is configured and present.
+   */
+  resolveEnvFileArgs(env, appDir, envFile, onLog) {
+    const targetDir = (env && env.app_dir) ? env.app_dir : appDir;
+    const targetEnvFile = (env && env.env_file) ? env.env_file : envFile;
+    if (!targetEnvFile) return [];
+
+    const isRemote = this.isTargetRemote(env);
+    const isAbs = isRemote ? targetEnvFile.startsWith('/') : path.isAbsolute(targetEnvFile);
+    const resolvedPath = isAbs
+      ? targetEnvFile
+      : (targetDir ? (isRemote ? path.posix.join(targetDir, targetEnvFile) : path.join(targetDir, targetEnvFile)) : targetEnvFile);
+
+    if (!isRemote && !fs.existsSync(resolvedPath)) {
+      if (onLog) onLog('warn', `Env file '${resolvedPath}' not found on host; starting container without --env-file.`);
+      return [];
+    }
+
+    return ['--env-file', resolvedPath];
+  }
+
+  async runStagingContainer({ env, appDir, envFile, imageName, imageTag, containerName, stagingPort, containerPort, onLog, abortSignal }) {
     if (abortSignal && abortSignal.aborted) throw new Error('Operation aborted');
 
     const fullTag = `${imageName}:${imageTag}`;
     const sPort = (env && env.staging_port) ? env.staging_port : stagingPort;
     const cPort = (env && env.container_port) ? env.container_port : (containerPort || 3000);
+    const envFileArgs = this.resolveEnvFileArgs(env, appDir, envFile, onLog);
 
     onLog('info', `Starting staging container: ${containerName}`);
-    onLog('info', `docker run -d --name ${containerName} -e NODE_ENV=production -p ${sPort}:${cPort} ${fullTag}`);
+    onLog('info', `docker run -d --name ${containerName} -e NODE_ENV=production ${envFileArgs.join(' ')} -p ${sPort}:${cPort} ${fullTag}`.replace(/\s+/g, ' '));
 
     if (this.dockerAvailable || this.isTargetRemote(env)) {
       // cleanup stale
@@ -367,7 +390,7 @@ class ExecutionDriver {
         env,
         cwd: null,
         command: 'docker',
-        args: ['run', '-d', '--name', containerName, '-e', 'NODE_ENV=production', '-p', `${sPort}:${cPort}`, fullTag],
+        args: ['run', '-d', '--name', containerName, '-e', 'NODE_ENV=production', ...envFileArgs, '-p', `${sPort}:${cPort}`, fullTag],
         onLog,
         abortSignal,
       });
