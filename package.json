@@ -1,6 +1,6 @@
 {
   "name": "pipra-ci",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Enterprise-grade continuous delivery and deployment orchestration platform with zero-downtime cutover and SLSA provenance",
   "main": "server.js",
   "bin": {
