@@ -14,11 +14,12 @@ Restart=always
 RestartSec=5
 LimitNOFILE=65535
 
-# ISO 27001 Security Hardening Directives
+# ISO 27001 Security Hardening Directives (Adjusted for multi-tenant workspace traversal)
 ProtectSystem=full
-ProtectHome=true
+ProtectHome=read-only
 NoNewPrivileges=true
 PrivateTmp=true
+Environment="PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin"
 
 [Install]
 WantedBy=multi-user.target

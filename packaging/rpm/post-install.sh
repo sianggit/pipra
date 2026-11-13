@@ -34,6 +34,11 @@ if [ ! -L /usr/bin/pipra ] && [ -f /usr/lib/pipra/bin/pipra.sh ]; then
     ln -sf /usr/lib/pipra/bin/pipra.sh /usr/bin/pipra
 fi
 
+# 3.1 Configure git safe.directory globally for unprivileged service execution
+if command -v git >/dev/null 2>&1; then
+    git config --system --add safe.directory '*' >/dev/null 2>&1 || true
+fi
+
 # 4. Systemd service lifecycle reload
 if [ -d /run/systemd/system ]; then
     systemctl daemon-reload >/dev/null 2>&1 || true
