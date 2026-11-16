@@ -24,7 +24,7 @@ describe('AI Diagnostics - Deterministic Heuristic Analysis', () => {
     const res = analyzeHeuristic(context);
     assert.equal(res.category, ERROR_CATEGORIES.PORT_CONFLICT);
     assert.match(res.summary, /Port collision/i);
-    assert.match(res.suggested_fix, /netstat|findstr/i);
+    assert.match(res.suggested_fix, /ss -tulpn|docker ps/i);
   });
 
   it('correctly categorizes missing module dependencies (MODULE_NOT_FOUND)', () => {

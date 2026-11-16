@@ -65,6 +65,28 @@ class CutoverManager {
         }
       }
 
+      // 1b. Verify production port is clear of other containers or host daemons
+      const portConflict = await executionDriver.inspectPortConflict(env, hPort);
+      if (portConflict.inUse) {
+        if (portConflict.source === 'docker') {
+          onLog('warn', `Port :${hPort} is held by ${portConflict.detail}. Stopping conflicting container for cutover...`);
+          try {
+            await executionDriver.runCommandOnTarget({
+              env,
+              cwd: null,
+              command: 'docker',
+              args: ['stop', '-t', '2', portConflict.containerId || portConflict.containerName],
+              onLog: () => {},
+              abortSignal: null,
+            });
+          } catch (stopErr) {
+            onLog('warn', `Notice stopping conflicting container: ${stopErr.message}`);
+          }
+        } else if (portConflict.source === 'host') {
+          throw new Error(`Production cutover failed: Port :${hPort} is bound by ${portConflict.detail} (non-Docker host process).`);
+        }
+      }
+
       // 2. Launch modernized replacement container on production port
       onLog('info', `Launching replacement container on port :${hPort} -> :${cPort}`);
       await executionDriver.runCommandOnTarget({

@@ -236,6 +236,26 @@ class DeploymentRunner {
         onLog('info', `Execution Engine: ${isRemote ? `Zero-Agent Remote SSH Engine` : (executionDriver.dockerAvailable ? 'Docker Daemon Active' : 'Simulation Runner')}`);
         await executionDriver.delay(400);
 
+        if (executionDriver.dockerAvailable || isRemote) {
+          const stagingConflict = await executionDriver.inspectPortConflict(env, stagingPort);
+          if (stagingConflict.inUse) {
+            throw new Error(`Preflight failed: Staging port :${stagingPort} is already in use by ${stagingConflict.detail}. Stop or remove it before deploying.`);
+          }
+
+          const expectedProdName = deployment.container_name || app.name;
+          const hostConflict = await executionDriver.inspectPortConflict(env, hostPort);
+          if (hostConflict.inUse) {
+            if (hostConflict.source === 'host') {
+              throw new Error(`Preflight failed: Production port :${hostPort} is already bound by ${hostConflict.detail} (non-Docker host process). Stop the host service before deploying with Pipra.`);
+            }
+            if (hostConflict.containerName !== expectedProdName) {
+              onLog('warn', `Production port :${hostPort} is currently held by ${hostConflict.detail}; Stage 7 cutover will replace it.`);
+            } else {
+              onLog('info', `Active production container '${hostConflict.containerName}' detected on :${hostPort}; zero-downtime cutover ready.`);
+            }
+          }
+        }
+
         if (env.is_production) {
           onLog('info', `Production safety check: Rollback candidate '${env.active_release_id || 'none'}' recorded.`);
           rollbackCandidate = env.active_release_id;

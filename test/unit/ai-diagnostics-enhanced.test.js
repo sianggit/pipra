@@ -13,6 +13,7 @@ const {
   ERROR_CATEGORIES,
   analyzeHeuristic,
 } = require('../../src/engine/ai-diagnostics');
+const executionDriver = require('../../src/engine/execution-driver');
 
 describe('Enhanced AI Diagnostics - Real-world Incident Patterns', () => {
   it('correctly categorizes missing host binary (spawn npx ENOENT)', () => {
@@ -94,5 +95,40 @@ describe('Enhanced AI Diagnostics - Real-world Incident Patterns', () => {
     assert.match(res.summary, /Prisma database connection or migration failed/i);
     assert.match(res.root_cause, /could not connect to the database/i);
     assert.match(res.suggested_fix, /DATABASE_URL/i);
+  });
+
+  it('correctly extracts host process PID/name in PORT_CONFLICT diagnostics', () => {
+    const context = {
+      errorMessage: "Preflight failed: Production port :3000 is already bound by host process 'node' (PID 4182) (non-Docker host process).",
+      failedStage: 1,
+      failedStageName: 'Preflight Validation',
+      logs: [
+        { stage: 1, level: 'error', message: "Preflight failed: Production port :3000 is already bound by host process 'node' (PID 4182) (non-Docker host process)." },
+      ],
+      failedProbes: [],
+    };
+
+    const res = analyzeHeuristic(context);
+    assert.equal(res.category, ERROR_CATEGORIES.PORT_CONFLICT);
+    assert.match(res.summary, /Port 3000 is already bound by host process 'node' \(PID 4182\)/i);
+    assert.match(res.root_cause, /Stop the legacy host service/i);
+    assert.match(res.suggested_fix, /ss -tulpn \| grep :3000/i);
+  });
+
+  it('parses Docker and Linux ss port conflict outputs accurately', () => {
+    const dockerConflict = executionDriver.parsePortConflictOutput('fdb84df03b92|bold_hawking\n', '', 3002);
+    assert.equal(dockerConflict.inUse, true);
+    assert.equal(dockerConflict.source, 'docker');
+    assert.equal(dockerConflict.containerName, 'bold_hawking');
+    assert.equal(dockerConflict.containerId, 'fdb84df03b92');
+
+    const hostConflict = executionDriver.parsePortConflictOutput('', 'LISTEN 0 511 *:3000 *:* users:(("node",pid=4182,fd=21))', 3000);
+    assert.equal(hostConflict.inUse, true);
+    assert.equal(hostConflict.source, 'host');
+    assert.equal(hostConflict.processName, 'node');
+    assert.equal(hostConflict.pid, 4182);
+
+    const freePort = executionDriver.parsePortConflictOutput('', '', 3000);
+    assert.equal(freePort.inUse, false);
   });
 });

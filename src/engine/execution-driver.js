@@ -369,6 +369,84 @@ class ExecutionDriver {
     return ['--env-file', resolvedPath];
   }
 
+  /**
+   * Parses raw `docker ps` and `ss` output into a structured port conflict descriptor.
+   */
+  parsePortConflictOutput(dockerOut, ssOut, port) {
+    const cleanDocker = (dockerOut || '').replace(/['"]+/g, '').trim();
+    if (cleanDocker) {
+      const firstLine = cleanDocker.split('\n')[0].trim();
+      const [containerId, containerName] = firstLine.split('|');
+      if (containerName) {
+        return {
+          inUse: true,
+          source: 'docker',
+          containerId: containerId || '',
+          containerName: containerName.trim(),
+          detail: `Docker container '${containerName.trim()}' (${containerId || 'unknown'})`,
+        };
+      }
+    }
+
+    const cleanSs = (ssOut || '').trim();
+    if (cleanSs) {
+      const procMatch = cleanSs.match(/users:\(\("([^"]+)",pid=(\d+)/);
+      if (procMatch) {
+        return {
+          inUse: true,
+          source: 'host',
+          processName: procMatch[1],
+          pid: Number(procMatch[2]),
+          detail: `host process '${procMatch[1]}' (PID ${procMatch[2]})`,
+        };
+      }
+      return {
+        inUse: true,
+        source: 'host',
+        processName: null,
+        pid: null,
+        detail: `host listener on port ${port}`,
+      };
+    }
+
+    return { inUse: false, source: null, detail: null };
+  }
+
+  /**
+   * Inspects whether a target TCP port is already bound by a Docker container or host daemon.
+   */
+  async inspectPortConflict(env, port) {
+    if (!port) return { inUse: false, source: null, detail: null };
+    const isRemote = this.isTargetRemote(env);
+    if (!this.dockerAvailable && !isRemote) {
+      return { inUse: false, source: null, detail: null };
+    }
+
+    let dockerOut = '';
+    try {
+      dockerOut = await this.execOutputOnTarget({
+        env,
+        cwd: null,
+        command: 'docker',
+        args: ['ps', '--filter', `publish=${port}`, '--format', '{{.ID}}|{{.Names}}'],
+      });
+    } catch {}
+
+    let ssOut = '';
+    if (!dockerOut.trim() && (isRemote || process.platform !== 'win32')) {
+      try {
+        ssOut = await this.execOutputOnTarget({
+          env,
+          cwd: null,
+          command: 'ss',
+          args: ['-tulpnH', 'sport', '=', `:${port}`],
+        });
+      } catch {}
+    }
+
+    return this.parsePortConflictOutput(dockerOut, ssOut, port);
+  }
+
   async runStagingContainer({ env, appDir, envFile, imageName, imageTag, containerName, stagingPort, containerPort, onLog, abortSignal }) {
     if (abortSignal && abortSignal.aborted) throw new Error('Operation aborted');
 

@@ -102,15 +102,21 @@ function analyzeHeuristic(context) {
   ].join('\n');
 
   // 1. Port conflict / EADDRINUSE
-  if (/EADDRINUSE|address already in use|port is already allocated/i.test(logText)) {
-    const portMatch = logText.match(/:\s*(\d{4,5})|port\s*(\d{4,5})/i);
+  if (/EADDRINUSE|address already in use|port is already allocated|port\s*:\d+\s+is\s+(?:already\s+)?(?:in use|bound)/i.test(logText)) {
+    const portMatch = logText.match(/(?:0\.0\.0\.0|127\.0\.0\.1|::)?:(\d{2,5})\b|port\s*:?\s*(\d{2,5})/i);
     const port = portMatch ? (portMatch[1] || portMatch[2]) : 'target port';
+    const holderMatch = logText.match(/(Docker container '[^']+'(?:\s*\([^)]+\))?|host process '[^']+' \(PID \d+\)|host listener on port \d+)/i);
+    const holderDetail = holderMatch ? holderMatch[1] : null;
+    const isNonDockerHost = /non-Docker host process|host process/i.test(logText);
+
     return {
-      summary: `Port collision: Port ${port} is already bound by another process.`,
+      summary: `Port collision: Port ${port} is already bound${holderDetail ? ` by ${holderDetail}` : ' by another process'}.`,
       category: ERROR_CATEGORIES.PORT_CONFLICT,
-      root_cause: `The target environment attempted to bind to port ${port}, which is already held by a lingering container or host daemon.`,
-      probable_file: 'application_environments configuration or docker-compose.yml',
-      suggested_fix: `netstat -ano | findstr :${port} && docker ps --filter "publish=${port}"`,
+      root_cause: holderDetail
+        ? `Port ${port} is currently held by ${holderDetail}. ${isNonDockerHost ? 'Stop the legacy host service (PM2/systemd/node) so Pipra can bind the container to this port.' : 'Remove or stop the conflicting container before deploying.'}`
+        : `The target environment attempted to bind to port ${port}, which is already held by a lingering container or non-Docker host daemon (e.g. PM2/systemd/node).`,
+      probable_file: 'Host process (ss -tulpn) or Application Environment port configuration',
+      suggested_fix: `ss -tulpn | grep :${port} && docker ps --filter "publish=${port}"`,
     };
   }
 
