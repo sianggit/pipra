@@ -122,6 +122,12 @@ describe('Enhanced AI Diagnostics - Real-world Incident Patterns', () => {
     assert.equal(dockerConflict.containerName, 'bold_hawking');
     assert.equal(dockerConflict.containerId, 'fdb84df03b92');
 
+    const spaceDockerConflict = executionDriver.parsePortConflictOutput('b14cad3873e5 asyst-website-cms\n', '', 3000);
+    assert.equal(spaceDockerConflict.inUse, true);
+    assert.equal(spaceDockerConflict.source, 'docker');
+    assert.equal(spaceDockerConflict.containerName, 'asyst-website-cms');
+    assert.equal(spaceDockerConflict.containerId, 'b14cad3873e5');
+
     const hostConflict = executionDriver.parsePortConflictOutput('', 'LISTEN 0 511 *:3000 *:* users:(("node",pid=4182,fd=21))', 3000);
     assert.equal(hostConflict.inUse, true);
     assert.equal(hostConflict.source, 'host');

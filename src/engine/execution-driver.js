@@ -376,7 +376,7 @@ class ExecutionDriver {
     const cleanDocker = (dockerOut || '').replace(/['"]+/g, '').trim();
     if (cleanDocker) {
       const firstLine = cleanDocker.split('\n')[0].trim();
-      const [containerId, containerName] = firstLine.split('|');
+      const [containerId, containerName] = firstLine.split(/\||\s+/);
       if (containerName) {
         return {
           inUse: true,
@@ -428,7 +428,7 @@ class ExecutionDriver {
         env,
         cwd: null,
         command: 'docker',
-        args: ['ps', '--filter', `publish=${port}`, '--format', '{{.ID}}|{{.Names}}'],
+        args: ['ps', '--filter', `publish=${port}`, '--format', '"{{.ID}} {{.Names}}"'],
       });
     } catch {}
 
