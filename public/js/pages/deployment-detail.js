@@ -12,7 +12,7 @@ import { renderPipelineTimeline, bindTimelineEvents } from '../components/pipeli
 import { renderLogViewer, updateLogLines } from '../components/log-viewer.js';
 import { mountDeploymentHero, updateDeploymentHeroTelemetry, destroyDeploymentHero } from '../components/deployment-hero.js';
 import { DeploymentEventStream } from '../sse.js';
-import { canDeploy, canCancelDeployment } from '../auth.js';
+import { canDeploy, canCancelDeployment, canApproveDeployment, getUser } from '../auth.js';
 import { showToast } from '../components/toast.js';
 import { openModal } from '../components/modal.js';
 
@@ -178,6 +178,169 @@ function bindRcaCopyButton(targetContainer, deployment) {
   }
 }
 
+function renderApprovalGateBanner(deployment) {
+  const currentUser = getUser();
+  const isInitiator = currentUser && deployment.initiated_by && (currentUser.username === deployment.initiated_by);
+  const stagingUrl = deployment.staging_port ? `http://${deployment.host || '127.0.0.1'}:${deployment.staging_port}/` : null;
+
+  return `
+    <div id="promotion-gate-card" class="pn" style="border-left: 4px solid var(--warn); background: color-mix(in srgb, var(--warn) 6%, var(--b)); padding: 20px 24px; margin-bottom: 24px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;">
+        <div style="flex: 1; min-width: 280px;">
+          <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span class="b warn">${renderIcon('shield', 12)} Promotion Approval Gate Active</span>
+            <span class="dim">Stage 6 of 10 Passed</span>
+          </div>
+          <h2 style="margin: 0 0 6px 0; font-size: 16px; color: var(--t1);">
+            Production Cutover Awaiting Authorization
+          </h2>
+          <p style="margin: 0 0 12px 0; color: var(--t2); font-size: 13px; line-height: 1.5;">
+            Staging environment has been verified healthy. In accordance with ISO 27001 Two-Person Rule controls, explicit authorization is required before cutting over live production traffic on <strong>${deployment.env_display_name || deployment.env_name || 'Production'}</strong>.
+          </p>
+          <div style="display: flex; gap: 16px; font-size: 12px; color: var(--t3); flex-wrap: wrap;">
+            <span>Target: <strong class="mono" style="color: var(--t1);">${deployment.host || '127.0.0.1'}</strong></span>
+            ${stagingUrl ? `<span>Staging preview: <a href="${stagingUrl}" target="_blank" class="mono" style="color: var(--pr); text-decoration: underline;">${stagingUrl}</a></span>` : ''}
+            <span>Initiated by: <strong class="mono" style="color: var(--t1);">${deployment.triggered_by_username || deployment.initiated_by || 'operator'}</strong></span>
+          </div>
+        </div>
+
+        ${canApproveDeployment() ? `
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 4px;">
+            <button id="btn-gate-reject" class="btn d" aria-label="Reject deployment cutover">
+              ${renderIcon('x', 14)}
+              <span>Reject & Abort</span>
+            </button>
+            <button id="btn-gate-approve" class="btn p" style="background: var(--ok); border-color: var(--ok); color: #000; font-weight: 600;" aria-label="Authorize production cutover">
+              ${renderIcon('check', 14)}
+              <span>Authorize Production Cutover</span>
+            </button>
+          </div>
+        ` : `
+          <div style="color: var(--t3); font-size: 12px;">Operator or Admin privileges required to authorize cutover.</div>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+function openApprovalModal(deployment, onApprovedCallback) {
+  const currentUser = getUser();
+  const isInitiator = currentUser && deployment.initiated_by && (currentUser.username === deployment.initiated_by);
+
+  openModal({
+    title: 'Authorize Production Cutover',
+    maxWidth: '520px',
+    confirmText: 'Confirm & Cutover Traffic',
+    confirmClass: 'btn-primary',
+    bodyHtml: `
+      <div style="margin-bottom: 16px;">
+        <p style="color: var(--t1); font-size: 13px; line-height: 1.5; margin: 0 0 14px 0;">
+          You are authorizing production cutover for deployment <code class="mono" style="color: var(--pr);">${deployment.id}</code> on <strong>${deployment.app_display_name || deployment.app_name || 'Application'}</strong> (<span class="mono">${deployment.env_display_name || 'Production'}</span>).
+        </p>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 12px; font-weight: 500; color: var(--t2); margin-bottom: 6px;">Authorization Comments (Optional)</label>
+          <input type="text" id="modal-approval-comments" placeholder="e.g. Verified staging checklist passed" style="width: 100%; box-sizing: border-box;" />
+        </div>
+
+        ${isInitiator ? `
+          <div style="background: rgba(245, 166, 35, 0.1); border: 1px solid rgba(245, 166, 35, 0.3); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
+            <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--t1); cursor: pointer;">
+              <input type="checkbox" id="modal-self-approval-override" style="margin-top: 2px;" />
+              <div>
+                <strong>Self-Approval Emergency Override</strong>
+                <div style="color: var(--t2); font-size: 11px; margin-top: 2px;">
+                  You initiated this deployment. ISO 27001 standardly requires an independent peer approver. Checking this records an emergency override event in audit logs.
+                </div>
+              </div>
+            </label>
+          </div>
+        ` : ''}
+      </div>
+    `,
+    onConfirm: async () => {
+      const comments = document.getElementById('modal-approval-comments')?.value || '';
+      const allowSelf = document.getElementById('modal-self-approval-override')?.checked || false;
+
+      try {
+        const res = await api.approveDeployment(deployment.id, comments, allowSelf);
+        if (res.success) {
+          showToast({
+            type: 'success',
+            title: 'Cutover Authorized',
+            message: 'Production cutover in progress. Transitioning to Stage 7.'
+          });
+          deployment.status = 'CUTTING_OVER';
+          deployment.current_stage = 7;
+          deployment.current_stage_name = 'Production Cutover';
+          if (onApprovedCallback) onApprovedCallback();
+        } else {
+          showToast({
+            type: 'error',
+            title: 'Authorization Failed',
+            message: res.error || 'Failed to authorize deployment'
+          });
+        }
+      } catch (err) {
+        showToast({
+          type: 'error',
+          title: 'Authorization Failed',
+          message: err.message || 'Error communicating with server'
+        });
+      }
+    }
+  });
+}
+
+function openRejectModal(deployment, onRejectedCallback) {
+  openModal({
+    title: 'Reject Production Cutover',
+    maxWidth: '500px',
+    confirmText: 'Reject & Abort Deployment',
+    confirmClass: 'btn-danger',
+    bodyHtml: `
+      <div style="margin-bottom: 16px;">
+        <p style="color: var(--t1); font-size: 13px; line-height: 1.5; margin: 0 0 14px 0;">
+          Are you sure you want to reject production cutover for <code class="mono" style="color: var(--pr);">${deployment.id}</code>?
+          This will abort the deployment, remove staging containers, and keep current production running untouched.
+        </p>
+
+        <div>
+          <label style="display: block; font-size: 12px; font-weight: 500; color: var(--t2); margin-bottom: 6px;">Reason for Rejection</label>
+          <input type="text" id="modal-reject-reason" placeholder="e.g. Critical issue observed during staging verification" style="width: 100%; box-sizing: border-box;" />
+        </div>
+      </div>
+    `,
+    onConfirm: async () => {
+      const reason = document.getElementById('modal-reject-reason')?.value || 'Rejected by operator';
+      try {
+        const res = await api.rejectDeployment(deployment.id, reason);
+        if (res.success) {
+          showToast({
+            type: 'info',
+            title: 'Deployment Aborted',
+            message: 'Production cutover was rejected. Staging cleaned up.'
+          });
+          deployment.status = 'CANCELLED';
+          if (onRejectedCallback) onRejectedCallback();
+        } else {
+          showToast({
+            type: 'error',
+            title: 'Rejection Failed',
+            message: res.error || 'Failed to reject deployment'
+          });
+        }
+      } catch (err) {
+        showToast({
+          type: 'error',
+          title: 'Rejection Failed',
+          message: err.message || 'Error communicating with server'
+        });
+      }
+    }
+  });
+}
+
 export async function renderDeploymentDetailPage(container, deploymentId) {
   if (activeStream) {
     activeStream.disconnect();
@@ -210,6 +373,7 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
     function renderView() {
       const isTerminal = ['SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'ROLLBACK_FAILED'].includes(deployment.status);
       const isRunning = !isTerminal;
+      const isWaitingForApproval = deployment.status === 'WAITING_FOR_APPROVAL';
       const isSucceeded = deployment.status === 'SUCCEEDED';
       const durationStr = deployment.duration_ms ? `${(deployment.duration_ms / 1000).toFixed(1)}s` : (isRunning ? 'in progress...' : '—');
 
@@ -238,7 +402,17 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
           </div>
 
           <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            ${isRunning && canCancelDeployment() ? `
+            ${isWaitingForApproval && canApproveDeployment() ? `
+              <button id="btn-top-reject" class="btn d" aria-label="Reject deployment cutover">
+                ${renderIcon('x', 14)}
+                <span>Reject</span>
+              </button>
+              <button id="btn-top-approve" class="btn p" style="background: var(--ok); border-color: var(--ok); color: #000; font-weight: 600;" aria-label="Authorize production cutover">
+                ${renderIcon('check', 14)}
+                <span>Authorize Cutover</span>
+              </button>
+            ` : ''}
+            ${isRunning && !isWaitingForApproval && canCancelDeployment() ? `
               <button id="btn-cancel-deploy" class="btn d" aria-label="Cancel active execution">
                 ${renderIcon('x', 14)}
                 <span>Cancel</span>
@@ -265,6 +439,9 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
 
         <!-- 3D Active Deployment Hero Mount -->
         <div id="deployment-hero-mount"></div>
+
+        <!-- Promotion Approval Gate Banner (Active when WAITING_FOR_APPROVAL) -->
+        ${isWaitingForApproval ? renderApprovalGateBanner(deployment) : ''}
 
         <!-- 10-Stage Pipeline Lifecycle Track -->
         <div id="pipeline-mount">
@@ -509,6 +686,27 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
         });
       }
 
+      // Bind promotion gate authorization & rejection buttons
+      const approveBtns = [document.getElementById('btn-gate-approve'), document.getElementById('btn-top-approve')].filter(Boolean);
+      approveBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          openApprovalModal(deployment, () => {
+            destroyDeploymentHero();
+            renderView();
+          });
+        });
+      });
+
+      const rejectBtns = [document.getElementById('btn-gate-reject'), document.getElementById('btn-top-reject')].filter(Boolean);
+      rejectBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          openRejectModal(deployment, () => {
+            destroyDeploymentHero();
+            renderView();
+          });
+        });
+      });
+
       // Mount 3D deployment hero HUD
       const heroMount = document.getElementById('deployment-hero-mount');
       if (heroMount) {
@@ -564,12 +762,38 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
           // Update the 3D execution hero telemetry
           updateDeploymentHeroTelemetry(deployment);
         },
+        onApprovalRequested: (apprvEvent) => {
+          deployment.status = 'WAITING_FOR_APPROVAL';
+          deployment.current_stage = 6;
+          deployment.current_stage_name = 'Waiting for Production Approval';
+          showToast({
+            type: 'warn',
+            title: 'Authorization Required',
+            message: 'Staging verified healthy. Promotion gate awaiting operator approval.'
+          });
+          renderView();
+        },
+        onApproved: (apprvEvent) => {
+          deployment.status = 'CUTTING_OVER';
+          deployment.current_stage = 7;
+          deployment.current_stage_name = 'Production Cutover';
+          showToast({
+            type: 'info',
+            title: 'Cutover Authorized',
+            message: `Authorized by ${apprvEvent.approvedBy || 'Operator'}. Production cutover in progress.`
+          });
+          renderView();
+        },
         onStateChange: (stateEvent) => {
+          const statusChanged = deployment.status !== stateEvent.status;
           deployment.status = stateEvent.status;
           if (stateEvent.current_stage || stateEvent.currentStage) {
             deployment.current_stage = stateEvent.current_stage || stateEvent.currentStage;
           }
           if (stateEvent.stages) deployment.stages = stateEvent.stages;
+          if (statusChanged) {
+            destroyDeploymentHero();
+          }
           renderView();
         },
         onPipelineSpecLoaded: (specEvent) => {
@@ -609,10 +833,17 @@ export async function renderDeploymentDetailPage(container, deploymentId) {
           try {
             const fresh = await api.getDeployment(deploymentId);
             if (fresh) {
+              const statusChanged = deployment.status !== fresh.status;
               deployment.status = fresh.status;
               deployment.current_stage = fresh.current_stage;
               deployment.stages = fresh.stages || deployment.stages;
               deployment.duration_ms = fresh.duration_ms;
+
+              if (statusChanged) {
+                destroyDeploymentHero();
+                renderView();
+                return;
+              }
 
               // Reconcile timeline track
               const pipelineMount = document.getElementById('pipeline-mount');
