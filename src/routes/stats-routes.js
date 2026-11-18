@@ -59,14 +59,35 @@ function handleStatsRoutes(req, res, pathname, query, body, user) {
 
     const recentDeployments = db.prepare(`
       SELECT d.*, a.name as app_name, a.display_name as app_display_name,
-             e.name as env_name, e.display_name as env_display_name, e.is_production
+             COALESCE(ae.name, e.name) as env_name,
+             COALESCE(ae.display_name, e.display_name) as env_display_name,
+             COALESCE(ae.is_production, e.is_production, 0) as is_production
       FROM deployments d
       JOIN applications a ON d.application_id = a.id
-      JOIN environments e ON d.environment_id = e.id
+      LEFT JOIN application_environments ae ON d.environment_id = ae.id
+      LEFT JOIN environments e ON d.environment_id = e.id
       ORDER BY d.created_at DESC LIMIT 5
     `).all();
 
-    const envs = db.prepare('SELECT * FROM environments ORDER BY is_production ASC, name ASC').all();
+    let envs = db.prepare(`
+      SELECT ae.id, ae.application_id, ae.name, ae.display_name, ae.is_production,
+             ae.host, ae.active_release_id, ae.last_health_status, ae.last_verified_at,
+             a.name as app_name, a.display_name as app_display_name
+      FROM application_environments ae
+      JOIN applications a ON ae.application_id = a.id
+      WHERE ae.is_archived = 0 AND a.is_archived = 0
+      ORDER BY a.name ASC, ae.is_production ASC, ae.name ASC
+    `).all();
+
+    if (envs.length === 0) {
+      envs = db.prepare(`
+        SELECT id, name, display_name, is_production, host,
+               active_release_id, last_health_status, last_verified_at,
+               NULL as application_id, NULL as app_name, NULL as app_display_name
+        FROM environments
+        ORDER BY is_production ASC, name ASC
+      `).all();
+    }
     const agents = db.prepare('SELECT * FROM agents ORDER BY name ASC').all();
 
     res.writeHead(200, { 'Content-Type': 'application/json' });

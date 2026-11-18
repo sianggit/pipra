@@ -25,23 +25,57 @@ export async function renderOverviewPage(container) {
     const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     const formatDate = (iso) => {
-      if (!iso) return '10:48:51';
+      if (!iso) return null;
       const d = new Date(iso);
+      if (isNaN(d.getTime())) return null;
       return `${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     };
 
-    // Ensure 3 environments in standard order: devel -> staging -> prod
-    const envOrder = ['devel', 'development', 'staging', 'production', 'prod'];
-    const sortedEnvs = [...environments].sort((a, b) => {
-      const ia = a.is_production ? 99 : (a.name.toLowerCase().includes('staging') ? 50 : 10);
-      const ib = b.is_production ? 99 : (b.name.toLowerCase().includes('staging') ? 50 : 10);
-      return ia - ib;
+    // Group environments by application for discrete promotion paths
+    const appMap = new Map();
+    environments.forEach((env) => {
+      const appId = env.application_id || env.app_name || 'default';
+      const appName = env.app_display_name || env.app_name || 'Application Promotion Path';
+      if (!appMap.has(appId)) {
+        appMap.set(appId, {
+          id: appId,
+          name: appName,
+          environments: []
+        });
+      }
+      appMap.get(appId).environments.push(env);
+    });
+
+    const appGroups = Array.from(appMap.values());
+    appGroups.forEach((grp) => {
+      grp.environments.sort((a, b) => {
+        const ia = a.is_production ? 99 : (a.name.toLowerCase().includes('staging') ? 50 : 10);
+        const ib = b.is_production ? 99 : (b.name.toLowerCase().includes('staging') ? 50 : 10);
+        return ia - ib;
+      });
     });
 
     const getEnvKey = (env) => {
       if (env.is_production) return 'prod';
       if (env.name.toLowerCase().includes('staging')) return 'staging';
       return 'devel';
+    };
+
+    const renderHealthBadge = (env) => {
+      if (!env.active_release_id) {
+        return `<span class="b neu">${ic('minus')}Idle</span>`;
+      }
+      const s = (env.last_health_status || '').toUpperCase();
+      if (s === 'HEALTHY' || s === 'VERIFIED') {
+        return `<span class="b ok">${ic('check')}Healthy</span>`;
+      }
+      if (s === 'UNHEALTHY' || s === 'FAILED') {
+        return `<span class="b bad">${ic('x')}Unhealthy</span>`;
+      }
+      if (s === 'DEGRADED') {
+        return `<span class="b warn">${ic('warn')}Degraded</span>`;
+      }
+      return `<span class="b neu">${ic('clock')}Pending</span>`;
     };
 
     container.innerHTML = `
@@ -118,24 +152,45 @@ export async function renderOverviewPage(container) {
       <div class="pn">
         <div class="ph">
           <h2>Serving now</h2>
-          <small>Promotion path · all health checks verified</small>
+          <small>Promotion paths · verified application lifecycle</small>
         </div>
-        <div class="rail">
-          ${sortedEnvs.map((env, i) => {
-            const k = getEnvKey(env);
-            return `
-              ${i > 0 ? `<div class="ar">${ic('arr')}</div>` : ''}
-              <div class="rc ${k}">
-                <span class="env ${k}">
-                  <i></i>${env.display_name || env.name}
-                </span>
-                <div class="rel">${env.active_release_id || 'asdp-dims-fe:prod-20261026-v1.0.0'}</div>
-                <div><span class="b ok">${ic('check')}Healthy</span></div>
-                <div class="dim">Verified ${formatDate(env.last_health_check_at)} · ${env.host || '127.0.0.1'}</div>
+        ${appGroups.length === 0 ? `
+          <div style="padding: 24px; text-align: center; color: var(--t2);">
+            No active environments configured.
+          </div>
+        ` : `
+          <div class="rail-groups">
+            ${appGroups.map(grp => `
+              <div class="rail-app-block">
+                ${appGroups.length > 1 || grp.id !== 'default' ? `
+                  <div class="rail-app-header">
+                    <span class="rail-app-name">${grp.name}</span>
+                    <span class="rail-app-sub">${grp.environments.length} environment${grp.environments.length > 1 ? 's' : ''}</span>
+                  </div>
+                ` : ''}
+                <div class="rail">
+                  ${grp.environments.map((env, i) => {
+                    const k = getEnvKey(env);
+                    const releaseText = env.active_release_id || null;
+                    const verified = formatDate(env.last_verified_at || env.last_health_check_at);
+                    const verifiedText = verified ? `Verified ${verified}` : 'Not verified';
+                    return `
+                      ${i > 0 ? `<div class="ar">${ic('arr')}</div>` : ''}
+                      <div class="rc ${k}">
+                        <span class="env ${k}">
+                          <i></i>${env.display_name || env.name}
+                        </span>
+                        <div class="rel ${releaseText ? '' : 't3'}">${releaseText || 'No active release'}</div>
+                        <div>${renderHealthBadge(env)}</div>
+                        <div class="dim">${verifiedText} · ${env.host || '127.0.0.1'}</div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
               </div>
-            `;
-          }).join('')}
-        </div>
+            `).join('')}
+          </div>
+        `}
       </div>
 
       <!-- 2-Column Grid: Recent Deployments & Execution Agents -->
