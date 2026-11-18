@@ -456,7 +456,7 @@ class ExecutionDriver {
     const envFileArgs = this.resolveEnvFileArgs(env, appDir, envFile, onLog);
 
     onLog('info', `Starting staging container: ${containerName}`);
-    onLog('info', `docker run -d --name ${containerName} -e NODE_ENV=production ${envFileArgs.join(' ')} -p ${sPort}:${cPort} ${fullTag}`.replace(/\s+/g, ' '));
+    onLog('info', `docker run -d --name ${containerName} --add-host=host.docker.internal:host-gateway -e NODE_ENV=production ${envFileArgs.join(' ')} -p ${sPort}:${cPort} ${fullTag}`.replace(/\s+/g, ' '));
 
     if (this.dockerAvailable || this.isTargetRemote(env)) {
       // cleanup stale
@@ -468,7 +468,7 @@ class ExecutionDriver {
         env,
         cwd: null,
         command: 'docker',
-        args: ['run', '-d', '--name', containerName, '-e', 'NODE_ENV=production', ...envFileArgs, '-p', `${sPort}:${cPort}`, fullTag],
+        args: ['run', '-d', '--name', containerName, '--add-host=host.docker.internal:host-gateway', '-e', 'NODE_ENV=production', ...envFileArgs, '-p', `${sPort}:${cPort}`, fullTag],
         onLog,
         abortSignal,
       });

@@ -33,7 +33,12 @@ Available Commands & Flags:
   --dup, dup                   Run jscpd code duplication analysis (ratchet check)
   --graphify, graphify         Sync codebase AST knowledge graph
   --e2e, e2e [opts]            Run Playwright & Chrome DevTools E2E recorder (--list, --scenario <id>)
-  --antislop, antislop [opts]  Check status or verify anti-slop quality filter (status, verify)
+  --antislop, antislop [opts]  Check status or verify anti-slop quality filter (status, verify, check-docs, check-ui)
+  --check-docs, check-docs     Scan markdown/prose for statistical AI fingerprints & Indonesian EYD slop
+  --check-ui, check-ui         Scan UI source files for AI template fingerprints & hex/CDN drift
+  --skill-slice, skill-slice   Load bounded skill section (<skill>/<section>) with session dedup
+  --skill-search, skill-search Search skills with Bahasa Indonesia & English synonym expansion
+  --qa-lint, qa-lint           Lint Playwright specs for anti-flake violations
   --help, -h                   Display this help message
 `);
 }
@@ -200,8 +205,18 @@ switch (mainCommand) {
           console.error('\n[ERROR] Anti-slop verification failed. Run "portal update" to repair.\n');
           process.exit(1);
         }
+      } else if (action === 'check-docs' || action === 'check-ui') {
+        const portalBin = path.join(PROJECT_ROOT, 'bin', 'portal.js');
+        if (fs.existsSync(portalBin)) {
+          runCommand(process.execPath, [portalBin, 'antislop', action, ...subArgs.slice(1)]);
+        } else {
+          const fn = action === 'check-docs' ? antislopModule.checkDocs : antislopModule.checkUi;
+          const target = subArgs[1] ? path.resolve(subArgs[1]) : PROJECT_ROOT;
+          const res = fn(target);
+          console.log(JSON.stringify(res, null, 2));
+        }
       } else {
-        console.log('Usage: npm run ref antislop [status|verify]');
+        console.log('Usage: npm run ref antislop [status|verify|check-docs|check-ui]');
       }
     } catch (e) {
       console.error('[ref antislop] Error:', e.message);
@@ -259,6 +274,41 @@ switch (mainCommand) {
       process.exit(1);
     }
     runCommand(process.execPath, [e2eRunner, ...subArgs]);
+    break;
+  }
+
+  case 'check-docs':
+  case 'check-ui': {
+    const portalBin = path.join(PROJECT_ROOT, 'bin', 'portal.js');
+    if (fs.existsSync(portalBin)) {
+      runCommand(process.execPath, [portalBin, 'antislop', mainCommand, ...subArgs]);
+    }
+    break;
+  }
+
+  case 'skill-slice': {
+    const portalBin = path.join(PROJECT_ROOT, 'bin', 'portal.js');
+    if (fs.existsSync(portalBin)) {
+      runCommand(process.execPath, [portalBin, 'skill', 'slice', ...subArgs]);
+    }
+    break;
+  }
+
+  case 'skill-search': {
+    const portalBin = path.join(PROJECT_ROOT, 'bin', 'portal.js');
+    if (fs.existsSync(portalBin)) {
+      runCommand(process.execPath, [portalBin, 'skill', 'search', ...subArgs]);
+    }
+    break;
+  }
+
+  case 'qa-lint':
+  case 'qa-codify': {
+    const portalBin = path.join(PROJECT_ROOT, 'bin', 'portal.js');
+    const qaAction = mainCommand.replace('qa-', '');
+    if (fs.existsSync(portalBin)) {
+      runCommand(process.execPath, [portalBin, 'qa', qaAction, ...subArgs]);
+    }
     break;
   }
 

@@ -173,3 +173,11 @@ test('DeploymentRoutes: accepts image_tag or tag seamlessly on deployment launch
   assert.strictEqual(resImageTag.statusCode, 404, 'Must parse image_tag and proceed to app lookup');
   assert.ok(resImageTag.body.includes('Application not found'));
 });
+
+test('ExecutionDriver & CutoverManager: docker run includes --add-host=host.docker.internal:host-gateway', () => {
+  const execDriverSource = fs.readFileSync(require.resolve('../../src/engine/execution-driver'), 'utf-8');
+  assert.ok(execDriverSource.includes("'--add-host=host.docker.internal:host-gateway'"), 'ExecutionDriver staging container must include host-gateway');
+
+  const cutoverSource = fs.readFileSync(require.resolve('../../src/engine/cutover-manager'), 'utf-8');
+  assert.ok(cutoverSource.includes("'--add-host=host.docker.internal:host-gateway'"), 'CutoverManager production container must include host-gateway');
+});

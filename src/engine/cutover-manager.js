@@ -97,6 +97,7 @@ class CutoverManager {
           'run', '-d',
           '--restart', 'unless-stopped',
           '--name', containerName,
+          '--add-host=host.docker.internal:host-gateway',
           '-e', 'NODE_ENV=production',
           ...envFileArgs,
           '-p', `${hPort}:${cPort}`,
