@@ -12,7 +12,10 @@ const {
   parsePipelineSpec,
   discoverPipelineSpec,
   validateCommandSecurity,
+  validateVolumeSecurity,
+  normalizeVolumes,
 } = require('../../src/engine/pipeline-spec-parser');
+const executionDriver = require('../../src/engine/execution-driver');
 
 describe('Pipeline Spec Parser - YAML Sub-parser', () => {
   it('parses basic scalar key-values and arrays', () => {
@@ -167,4 +170,75 @@ describe('Pipeline Spec Discovery in Repository Root', () => {
     }
   });
 });
+
+describe('Pipeline Spec - Persistent Volume Mounts & Sandboxing', () => {
+  it('parses valid volume mount strings and objects', () => {
+    const yaml = `
+version: "1.0"
+volumes:
+  - "./uploads:/app/public/uploads"
+  - "./prisma.config.ts:/app/prisma.config.ts:ro"
+  - host: /opt/shared/data
+    container: /app/data
+    readonly: true
+`;
+    const result = parsePipelineSpec(yaml, 'yaml');
+    assert.equal(result.valid, true);
+    assert.equal(result.spec.volumes.length, 3);
+    assert.deepEqual(result.spec.volumes[0], { host: './uploads', container: '/app/public/uploads', mode: 'rw' });
+    assert.deepEqual(result.spec.volumes[1], { host: './prisma.config.ts', container: '/app/prisma.config.ts', mode: 'ro' });
+    assert.deepEqual(result.spec.volumes[2], { host: '/opt/shared/data', container: '/app/data', mode: 'ro' });
+  });
+
+  it('rejects volume mounts to forbidden host root directories (ISO 27001)', () => {
+    const forbiddenPaths = [
+      '/etc/shadow:/app/shadow',
+      '/var/lib/pipra/data:/app/data',
+      '/root/.ssh:/root/.ssh',
+      '/proc/sys:/app/proc',
+    ];
+
+    for (const f of forbiddenPaths) {
+      const yaml = `
+version: "1.0"
+volumes:
+  - "${f}"
+`;
+      const result = parsePipelineSpec(yaml, 'yaml');
+      assert.equal(result.valid, false);
+      assert.match(result.errors[0], /restricted host directory/);
+    }
+  });
+
+  it('rejects mounting into root or vital container bin directories', () => {
+    const yaml = `
+version: "1.0"
+volumes:
+  - "./custom_bin:/bin"
+`;
+    const result = parsePipelineSpec(yaml, 'yaml');
+    assert.equal(result.valid, false);
+    assert.match(result.errors[0], /critical container root/);
+  });
+
+  it('resolves relative volume mounts accurately against appDir via executionDriver', () => {
+    const volumes = [
+      { host: './uploads', container: '/app/public/uploads', mode: 'rw' },
+      { host: './prisma.config.ts', container: '/app/prisma.config.ts', mode: 'ro' },
+      { host: '/opt/shared/media', container: '/app/media', mode: 'rw' },
+    ];
+
+    const env = { app_dir: '/home/devel/asyst-website-cms', auth_type: 'NONE' };
+    const args = executionDriver.resolveVolumeArgs(env, '/home/devel/asyst-website-cms', volumes);
+
+    assert.equal(args.length, 6);
+    assert.equal(args[0], '-v');
+    assert.match(args[1], /asyst-website-cms[\\\/]uploads:\/app\/public\/uploads$/);
+    assert.equal(args[2], '-v');
+    assert.match(args[3], /asyst-website-cms[\\\/]prisma\.config\.ts:\/app\/prisma\.config\.ts:ro$/);
+    assert.equal(args[4], '-v');
+    assert.equal(args[5], '/opt/shared/media:/app/media');
+  });
+});
+
 

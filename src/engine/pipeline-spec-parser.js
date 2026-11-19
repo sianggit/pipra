@@ -22,6 +22,54 @@ const FORBIDDEN_COMMAND_PATTERNS = [
   />\s*\/dev\/nvme/i,
 ];
 
+// Restricted host root directories for volume bind mounts (ISO 27001 sandboxing)
+const FORBIDDEN_HOST_MOUNT_ROOTS = [
+  '/etc',
+  '/var/lib/pipra',
+  '/root',
+  '/proc',
+  '/sys',
+  '/boot',
+  '/dev',
+];
+
+/**
+ * Validates volume mount host and container paths against forbidden system directories.
+ * @param {string} hostPath
+ * @param {string} containerPath
+ * @returns {{ valid: boolean, reason?: string }}
+ */
+function validateVolumeSecurity(hostPath, containerPath) {
+  if (!hostPath || typeof hostPath !== 'string') {
+    return { valid: false, reason: 'Volume host path must be a non-empty string' };
+  }
+  if (!containerPath || typeof containerPath !== 'string') {
+    return { valid: false, reason: 'Volume container path must be a non-empty string' };
+  }
+
+  const cleanHost = hostPath.trim().replace(/\\/g, '/');
+  const cleanContainer = containerPath.trim().replace(/\\/g, '/');
+
+  // Prevent forbidden host roots
+  for (const forbidden of FORBIDDEN_HOST_MOUNT_ROOTS) {
+    if (cleanHost === forbidden || cleanHost.startsWith(forbidden + '/')) {
+      return { valid: false, reason: `Volume mount to restricted host directory '${forbidden}' is prohibited` };
+    }
+  }
+
+  // Prevent traversal escaping root
+  if (cleanHost.includes('../..') && cleanHost.startsWith('/')) {
+    return { valid: false, reason: 'Volume host path contains unsafe directory traversal' };
+  }
+
+  // Prevent mounting into root or vital container bin directories
+  if (cleanContainer === '/' || cleanContainer === '/bin' || cleanContainer === '/sbin' || cleanContainer === '/usr') {
+    return { valid: false, reason: `Volume mount into critical container root '${cleanContainer}' is prohibited` };
+  }
+
+  return { valid: true };
+}
+
 /**
  * Validates a single shell command string against forbidden security patterns.
  * @param {string} cmd
@@ -255,6 +303,61 @@ function normalizeHooks(hooks, stageName) {
 }
 
 /**
+ * Normalizes an array of volume mount strings or objects:
+ * { host: string, container: string, mode: 'rw' | 'ro' }
+ */
+function normalizeVolumes(volumes) {
+  if (!volumes) return [];
+  if (!Array.isArray(volumes)) {
+    throw new Error("Invalid 'volumes' specification: expected an array of volume mount mappings.");
+  }
+
+  return volumes.map((item, idx) => {
+    let host = '';
+    let container = '';
+    let mode = 'rw';
+
+    if (typeof item === 'string') {
+      const parts = item.trim().split(':');
+      if (parts.length < 2 || parts.length > 3) {
+        throw new Error(`Invalid volume mapping at index ${idx}: expected 'host:container[:mode]', got '${item}'`);
+      }
+      host = parts[0].trim();
+      container = parts[1].trim();
+      if (parts[2]) {
+        const m = parts[2].trim().toLowerCase();
+        if (m === 'ro' || m === 'rw') {
+          mode = m;
+        } else {
+          throw new Error(`Invalid volume mode '${parts[2]}' at index ${idx}: expected 'ro' or 'rw'`);
+        }
+      }
+    } else if (typeof item === 'object' && item !== null) {
+      host = (item.host || item.source || item.src || '').trim();
+      container = (item.container || item.target || item.dest || '').trim();
+      if (item.readonly === true || item.mode === 'ro') {
+        mode = 'ro';
+      } else {
+        mode = 'rw';
+      }
+    } else {
+      throw new Error(`Invalid item in 'volumes' at index ${idx}: must be a string or object.`);
+    }
+
+    if (!host || !container) {
+      throw new Error(`Invalid volume mapping at index ${idx}: both host and container paths are required.`);
+    }
+
+    const secCheck = validateVolumeSecurity(host, container);
+    if (!secCheck.valid) {
+      throw new Error(`Security validation failed for volume mount [${host}:${container}]: ${secCheck.reason}`);
+    }
+
+    return { host, container, mode };
+  });
+}
+
+/**
  * Parses and strictly validates a Pipra pipeline specification.
  *
  * @param {string} content - Raw YAML or JSON file content
@@ -293,6 +396,7 @@ function parsePipelineSpec(content, format = 'yaml') {
     build: {},
     verification: [],
     post_cutover: [],
+    volumes: [],
   };
 
   const errors = [];
@@ -332,6 +436,15 @@ function parsePipelineSpec(content, format = 'yaml') {
   try {
     if (parsed.post_cutover) {
       spec.post_cutover = normalizeHooks(parsed.post_cutover, 'post_cutover');
+    }
+  } catch (err) {
+    errors.push(err.message);
+  }
+
+  // 6. Persistent volume mounts
+  try {
+    if (parsed.volumes) {
+      spec.volumes = normalizeVolumes(parsed.volumes);
     }
   } catch (err) {
     errors.push(err.message);
@@ -392,5 +505,8 @@ module.exports = {
   parsePipelineSpec,
   discoverPipelineSpec,
   validateCommandSecurity,
+  validateVolumeSecurity,
+  normalizeVolumes,
   FORBIDDEN_COMMAND_PATTERNS,
+  FORBIDDEN_HOST_MOUNT_ROOTS,
 };

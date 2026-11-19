@@ -14,10 +14,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/sianggit/pipra/releases/tag/v1.1.5"><img src="https://img.shields.io/badge/Release-v1.1.5-blue?style=flat-square" alt="Current Release" /></a>
+  <a href="https://github.com/sianggit/pipra/releases/tag/v1.1.6"><img src="https://img.shields.io/badge/Release-v1.1.6-blue?style=flat-square" alt="Current Release" /></a>
   <img src="https://img.shields.io/badge/Linux%20RPM-EL9%20x86__64-CC292B?style=flat-square&logo=redhat&logoColor=white" alt="Linux RPM Package" />
   <img src="https://img.shields.io/badge/Node.js-v20%20%7C%20v22%20%7C%20v26%20LTS-43853d?style=flat-square&logo=node.js&logoColor=white" alt="Node.js" />
-  <img src="https://img.shields.io/badge/Tests-114%20Passed%20%7C%200%20Failed-success?style=flat-square" alt="Test Status" />
+  <img src="https://img.shields.io/badge/Tests-118%20Passed%20%7C%200%20Failed-success?style=flat-square" alt="Test Status" />
   <img src="https://img.shields.io/badge/Security-SLSA%20Level%202%20%2B%20ISO%2027001-43c99a?style=flat-square" alt="Security Attested" />
   <img src="https://img.shields.io/badge/Storage-Native%20SQLite%20(WAL)-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite" />
   <img src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" alt="MIT License" />
@@ -34,8 +34,8 @@ Pipra is distributed via a dual-track architecture: **Enterprise Linux RPM packa
 Install directly from the official release repository via `dnf`:
 
 ```bash
-# Download and install the latest RPM package (v1.1.5)
-sudo dnf install -y https://github.com/sianggit/pipra/releases/download/v1.1.5/pipra-1.1.5-1.el9.x86_64.rpm
+# Download and install the latest RPM package (v1.1.6)
+sudo dnf install -y https://github.com/sianggit/pipra/releases/download/v1.1.6/pipra-1.1.6-1.el9.x86_64.rpm
 
 # Enable and start the systemd service
 sudo systemctl enable --now pipra

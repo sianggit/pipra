@@ -17,6 +17,7 @@ class CutoverManager {
     imageTag,
     hostPort,
     containerPort,
+    volumes,
     onLog,
     abortSignal,
   }) {
@@ -27,6 +28,7 @@ class CutoverManager {
     const hPort = (env && env.host_port) ? env.host_port : hostPort;
     const cPort = (env && env.container_port) ? env.container_port : (containerPort || 3000);
     const envFileArgs = executionDriver.resolveEnvFileArgs(env, appDir, envFile, onLog);
+    const volumeArgs = executionDriver.resolveVolumeArgs(env, appDir, volumes, onLog);
 
     if (executionDriver.dockerAvailable || executionDriver.isTargetRemote(env)) {
       // 1. Check if production container is currently running
@@ -100,6 +102,7 @@ class CutoverManager {
           '--add-host=host.docker.internal:host-gateway',
           '-e', 'NODE_ENV=production',
           ...envFileArgs,
+          ...volumeArgs,
           '-p', `${hPort}:${cPort}`,
           fullTag,
         ],

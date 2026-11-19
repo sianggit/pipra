@@ -293,7 +293,8 @@ class DeploymentRunner {
           }
           pipelineSpec = parseResult.spec;
           db.prepare('UPDATE deployments SET pipeline_spec = ? WHERE id = ?').run(JSON.stringify(pipelineSpec), deploymentId);
-          onLog('info', `Declarative spec active (v${pipelineSpec.version}): ${pipelineSpec.preflight.length} preflight hook(s), ${pipelineSpec.verification.length} staging verification hook(s), ${pipelineSpec.post_cutover.length} post-cutover hook(s).`);
+          const volCount = (pipelineSpec.volumes || []).length;
+          onLog('info', `Declarative spec active (v${pipelineSpec.version}): ${pipelineSpec.preflight.length} preflight hook(s), ${pipelineSpec.verification.length} staging verification hook(s), ${pipelineSpec.post_cutover.length} post-cutover hook(s), ${volCount} volume mount(s).`);
           logStream.broadcast(deploymentId, 'pipeline_spec_loaded', {
             deploymentId,
             fileName: specDiscovery.fileName,
@@ -301,6 +302,7 @@ class DeploymentRunner {
             preflightCount: pipelineSpec.preflight.length,
             verificationCount: pipelineSpec.verification.length,
             postCutoverCount: pipelineSpec.post_cutover.length,
+            volumeCount: volCount,
             spec: pipelineSpec
           });
         } else {
@@ -386,6 +388,7 @@ class DeploymentRunner {
         stagingContainerName = `${app.name}-staging-${Date.now()}`;
         db.prepare('UPDATE deployments SET staging_container_name = ? WHERE id = ?').run(stagingContainerName, deploymentId);
 
+        const volumes = (pipelineSpec && pipelineSpec.volumes) || env.volumes || [];
         await executionDriver.runStagingContainer({
           env: { ...env, app_dir: appDir, env_file: envFile, staging_port: stagingPort, container_port: containerPort },
           appDir,
@@ -395,6 +398,7 @@ class DeploymentRunner {
           containerName: stagingContainerName,
           stagingPort,
           containerPort,
+          volumes,
           onLog,
           abortSignal: signal,
         });
@@ -544,6 +548,7 @@ class DeploymentRunner {
           imageTag: deployment.image_tag,
           hostPort,
           containerPort,
+          volumes,
           onLog,
           abortSignal: signal,
         });

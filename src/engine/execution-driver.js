@@ -370,6 +370,60 @@ class ExecutionDriver {
   }
 
   /**
+   * Resolves -v / --volume Docker CLI arguments from declarative volume specs or env configuration.
+   * Supports relative host paths (resolved against targetDir) and read-only/read-write flags.
+   */
+  resolveVolumeArgs(env, appDir, volumes, onLog) {
+    if (!volumes || !Array.isArray(volumes) || volumes.length === 0) return [];
+
+    const targetDir = (env && env.app_dir) ? env.app_dir : appDir;
+    const isRemote = this.isTargetRemote(env);
+    const args = [];
+
+    for (const v of volumes) {
+      let host = '';
+      let container = '';
+      let mode = 'rw';
+
+      if (typeof v === 'string') {
+        const parts = v.trim().split(':');
+        host = parts[0] ? parts[0].trim() : '';
+        container = parts[1] ? parts[1].trim() : '';
+        if (parts[2]) mode = parts[2].trim().toLowerCase();
+      } else if (typeof v === 'object' && v !== null) {
+        host = (v.host || v.source || v.src || '').trim();
+        container = (v.container || v.target || v.dest || '').trim();
+        if (v.readonly === true || v.mode === 'ro') mode = 'ro';
+      }
+
+      if (!host || !container) continue;
+
+      // Check if host path is absolute or relative
+      const isAbs = isRemote ? host.startsWith('/') : path.isAbsolute(host);
+      let resolvedHost = host;
+      if (!isAbs && targetDir) {
+        resolvedHost = isRemote
+          ? path.posix.join(targetDir, host.replace(/^\.\//, ''))
+          : path.join(targetDir, host.replace(/^\.\//, ''));
+      }
+
+      // Normalize slashes for remote Linux targets
+      if (isRemote) {
+        resolvedHost = resolvedHost.replace(/\\/g, '/');
+      }
+
+      const mountSpec = mode === 'ro' ? `${resolvedHost}:${container}:ro` : `${resolvedHost}:${container}`;
+      args.push('-v', mountSpec);
+
+      if (onLog) {
+        onLog('info', `[Pipra] Injected persistent volume mount: ${mountSpec}`);
+      }
+    }
+
+    return args;
+  }
+
+  /**
    * Parses raw `docker ps` and `ss` output into a structured port conflict descriptor.
    */
   parsePortConflictOutput(dockerOut, ssOut, port) {
@@ -447,16 +501,17 @@ class ExecutionDriver {
     return this.parsePortConflictOutput(dockerOut, ssOut, port);
   }
 
-  async runStagingContainer({ env, appDir, envFile, imageName, imageTag, containerName, stagingPort, containerPort, onLog, abortSignal }) {
+  async runStagingContainer({ env, appDir, envFile, imageName, imageTag, containerName, stagingPort, containerPort, volumes, onLog, abortSignal }) {
     if (abortSignal && abortSignal.aborted) throw new Error('Operation aborted');
 
     const fullTag = `${imageName}:${imageTag}`;
     const sPort = (env && env.staging_port) ? env.staging_port : stagingPort;
     const cPort = (env && env.container_port) ? env.container_port : (containerPort || 3000);
     const envFileArgs = this.resolveEnvFileArgs(env, appDir, envFile, onLog);
+    const volumeArgs = this.resolveVolumeArgs(env, appDir, volumes, onLog);
 
     onLog('info', `Starting staging container: ${containerName}`);
-    onLog('info', `docker run -d --name ${containerName} --add-host=host.docker.internal:host-gateway -e NODE_ENV=production ${envFileArgs.join(' ')} -p ${sPort}:${cPort} ${fullTag}`.replace(/\s+/g, ' '));
+    onLog('info', `docker run -d --name ${containerName} --add-host=host.docker.internal:host-gateway -e NODE_ENV=production ${envFileArgs.join(' ')} ${volumeArgs.join(' ')} -p ${sPort}:${cPort} ${fullTag}`.replace(/\s+/g, ' '));
 
     if (this.dockerAvailable || this.isTargetRemote(env)) {
       // cleanup stale
@@ -468,7 +523,7 @@ class ExecutionDriver {
         env,
         cwd: null,
         command: 'docker',
-        args: ['run', '-d', '--name', containerName, '--add-host=host.docker.internal:host-gateway', '-e', 'NODE_ENV=production', ...envFileArgs, '-p', `${sPort}:${cPort}`, fullTag],
+        args: ['run', '-d', '--name', containerName, '--add-host=host.docker.internal:host-gateway', '-e', 'NODE_ENV=production', ...envFileArgs, ...volumeArgs, '-p', `${sPort}:${cPort}`, fullTag],
         onLog,
         abortSignal,
       });
